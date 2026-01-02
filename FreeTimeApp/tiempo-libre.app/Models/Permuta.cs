@@ -1,0 +1,49 @@
+using System;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+
+namespace tiempo_libre.Models
+{
+    [Table("Permutas")]
+    public class Permuta
+    {
+        [Key]
+        public int Id { get; set; }
+
+        [Required]
+        public int EmpleadoOrigenId { get; set; }
+
+        [ForeignKey(nameof(EmpleadoOrigenId))]
+        public virtual User? EmpleadoOrigen { get; set; }
+
+        [Required]
+        public int EmpleadoDestinoId { get; set; }
+
+        [ForeignKey(nameof(EmpleadoDestinoId))]
+        public virtual User? EmpleadoDestino { get; set; }
+
+        [Required]
+        public DateOnly FechaPermuta { get; set; }
+
+        [Required]
+        [MaxLength(50)]
+        public string TurnoEmpleadoOrigen { get; set; } = string.Empty;
+
+        [Required]
+        [MaxLength(50)]
+        public string TurnoEmpleadoDestino { get; set; } = string.Empty;
+
+        [Required]
+        [MaxLength(500)]
+        public string Motivo { get; set; } = string.Empty;
+
+        [Required]
+        public int SolicitadoPorId { get; set; }
+
+        [ForeignKey(nameof(SolicitadoPorId))]
+        public virtual User? SolicitadoPor { get; set; }
+
+        [Required]
+        public DateTime FechaSolicitud { get; set; } = DateTime.UtcNow;
+    }
+}

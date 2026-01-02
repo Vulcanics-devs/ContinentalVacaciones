@@ -1,0 +1,102 @@
+/* Estilos personalizados para el calendario */
+
+/* Celda especial amarilla */
+.rbc-date-cell {
+  padding: 8px !important;
+}
+
+/* Emoji en la esquina superior izquierda */
+.special-date-emoji {
+  position: absolute !important;
+  top: 2px !important;
+  left: 2px !important;
+  font-size: 12px !important;
+  z-index: 10 !important;
+  pointer-events: none !important;
+}
+
+/* Asegurar que el fondo se mantenga en hover */
+.rbc-date-cell.special-date:hover {
+  background-color: var(--continental-yellow) !important;
+}
+
+/* Estilos para la vista de mes */
+.rbc-month-view .rbc-date-cell.special-date {
+  background-color: var(--continental-yellow) !important;
+  border-radius: 4px !important;
+}
+
+/* Wrapper personalizado para las celdas */
+.custom-date-cell-wrapper {
+  position: relative;
+  height: 100%;
+  width: 100%;
+}
+
+.custom-date-cell-wrapper.special {
+  background-color: var(--continental-yellow) !important;
+  
+}
+
+/* Estilos para diferentes tipos de eventos */
+.custom-date-cell-wrapper.work-day {
+  background-color: var(--color-continental-white) !important; /* Verde claro */
+  
+}
+
+.custom-date-cell-wrapper.work-day .rbc-button-link {
+  color: var(--color-continental-white) !important; /* Verde oscuro */
+  font-weight: bold !important;
+}
+
+.custom-date-cell-wrapper.rest-day {
+  background-color: var(--color-continental-gray-3) !important; /* Amarillo claro */
+  
+}
+
+.custom-date-cell-wrapper.rest-day .rbc-button-link {
+  color: var(--color-continental-gray-3) !important; /* Marrón oscuro */
+  font-weight: bold !important;
+}
+
+.custom-date-cell-wrapper.holiday-day {
+  background-color: var(--color-continental-yellow) !important; /* Amarillo claro */
+  
+}
+
+.custom-date-cell-wrapper.holiday-day .rbc-button-link {
+  color: var(--color-continental-yellow) !important; /* Amarillo oscuro */
+  font-weight: bold !important;
+}
+
+.custom-date-cell-wrapper.holiday-boss-day {
+  background-color: var(--color-continental-blue-light) !important; /* Rosa claro */
+  
+  color: white !important;
+}
+
+.custom-date-cell-wrapper.holiday-boss-day .rbc-button-link {
+  color: var(--color-continental-blue-light) !important; /* Rosa oscuro */
+  font-weight: bold !important;
+}
+
+.custom-date-cell-wrapper.not-work-day {
+  background-color: var(--continental-gray-2) !important; /* Rojo claro */
+  
+}
+
+.custom-date-cell-wrapper.not-work-day .rbc-button-link {
+  color: var(--continental-gray-2) !important; /* Rojo oscuro */
+  font-weight: bold !important;
+}
+
+.custom-date-cell-wrapper.inability-day {
+  background-color: var(--color-continental-gray-1) !important; /* Gris claro */
+  cursor: not-allowed !important;
+  
+}
+
+.custom-date-cell-wrapper.inability-day .rbc-button-link {
+  color: var(--color-continental-gray-1) !important; /* Gris oscuro */
+  font-weight: bold !important;
+}

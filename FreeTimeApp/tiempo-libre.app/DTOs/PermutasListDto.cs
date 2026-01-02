@@ -1,0 +1,24 @@
+using System;
+using System.Collections.Generic;
+
+namespace tiempo_libre.DTOs
+{
+    public class PermutaListItem
+    {
+        public int Id { get; set; }
+        public string EmpleadoOrigenNombre { get; set; } = string.Empty;
+        public string EmpleadoDestinoNombre { get; set; } = string.Empty;
+        public DateOnly FechaPermuta { get; set; }
+        public string TurnoEmpleadoOrigen { get; set; } = string.Empty;
+        public string TurnoEmpleadoDestino { get; set; } = string.Empty;
+        public string Motivo { get; set; } = string.Empty;
+        public string SolicitadoPorNombre { get; set; } = string.Empty;
+        public DateTime FechaSolicitud { get; set; }
+    }
+
+    public class PermutasListResponse
+    {
+        public List<PermutaListItem> Permutas { get; set; } = new();
+        public int Total { get; set; }
+    }
+}

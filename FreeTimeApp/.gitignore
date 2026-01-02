@@ -1,0 +1,81 @@
+## .NET Core
+bin/
+obj/
+out/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+## .NET Core
+tiempo-libre.app/bin/
+tiempo-libre.app/obj/
+tiempo-libre.app/out/
+tiempo-libre.app/*.user
+tiempo-libre.app/*.suo
+tiempo-libre.app/*.userosscache
+tiempo-libre.app/*.sln.docstates
+
+
+## .NET Core
+tiempo-libre.Tests/bin/
+tiempo-libre.Tests/obj/
+tiempo-libre.Tests/out/
+tiempo-libre.Tests/*.user
+tiempo-libre.Tests/*.suo
+tiempo-libre.Tests/*.userosscache
+tiempo-libre.Tests/*.sln.docstates
+
+# Visual Studio Code
+.vscode/
+
+# Logs
+*.log
+Logs/
+
+# NuGet packages
+*.nupkg
+.nuget/
+packages/
+# Uncomment if using NuGet Package Restore
+#**/packages/*
+
+# Entity Framework Migrations
+
+# Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+build/
+bld/
+[Bb]in/
+[Oo]bj/
+TestResults/
+*.dbmdl
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Docker
+**/docker-compose.override.yml
+**/docker-compose.*.yml
+**/Dockerfile*
+
+# Environment files
+.env
+
+# Rider
+.idea/
+*.sln.iml
+
+# Others
+*.vspscc
+*.vssscc
+_ReSharper*/
+*.resharper
+*.DotSettings.user
+
+# Publish
+publish/

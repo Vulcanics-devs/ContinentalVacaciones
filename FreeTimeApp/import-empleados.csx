@@ -1,0 +1,64 @@
+#r "nuget: Microsoft.Data.SqlClient, 5.1.0"
+#r "nuget: CsvHelper, 30.0.1"
+
+using Microsoft.Data.SqlClient;
+using CsvHelper;
+using CsvHelper.Configuration;
+using System.Globalization;
+
+var connString = "Server=localhost;Database=Vacaciones;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=True";
+var csvPath = @"C:\Users\Miltron\ProyectoConti\New Data\Listado-Sindicalizados-Final.csv";
+
+var config = new CsvConfiguration(CultureInfo.InvariantCulture)
+{
+    HasHeaderRecord = true,
+};
+
+using var reader = new StreamReader(csvPath);
+using var csv = new CsvReader(reader, config);
+
+var records = csv.GetRecords<dynamic>().ToList();
+Console.WriteLine($"Encontrados {records.Count} registros en CSV");
+
+using var conn = new SqlConnection(connString);
+await conn.OpenAsync();
+
+int imported = 0;
+foreach (var record in records)
+{
+    var dict = (IDictionary<string, object>)record;
+
+    var nomina = int.Parse(dict["Nomina"].ToString());
+    var nombre = dict["Nombre"].ToString();
+    var alta = dict["Alta"].ToString();
+    var centroCoste = dict.ContainsKey("CentroCoste") ? int.Parse(dict["CentroCoste"].ToString()) : (int?)null;
+    var posicion = dict.ContainsKey("Posicion") ? dict["Posicion"].ToString() : null;
+    var unidadOrg = dict.ContainsKey("UnidadOrganizativa") ? dict["UnidadOrganizativa"].ToString() : null;
+    var encargado = dict.ContainsKey("EncargadoRegistro") ? dict["EncargadoRegistro"].ToString() : null;
+    var rol = dict.ContainsKey("Regla ") ? dict["Regla "].ToString() : null;
+
+    // Parse fecha
+    DateTime? fechaAlta = null;
+    if (!string.IsNullOrEmpty(alta))
+    {
+        fechaAlta = DateTime.ParseExact(alta, "dd/MM/yyyy", CultureInfo.InvariantCulture);
+    }
+
+    var cmd = new SqlCommand(@"
+        INSERT INTO Empleados (Nomina, Nombre, FechaAlta, CentroCoste, Posicion, UnidadOrganizativa, EncargadoRegistro, Rol)
+        VALUES (@nomina, @nombre, @fechaAlta, @centroCoste, @posicion, @unidadOrg, @encargado, @rol)", conn);
+
+    cmd.Parameters.AddWithValue("@nomina", nomina);
+    cmd.Parameters.AddWithValue("@nombre", (object?)nombre ?? DBNull.Value);
+    cmd.Parameters.AddWithValue("@fechaAlta", (object?)fechaAlta ?? DBNull.Value);
+    cmd.Parameters.AddWithValue("@centroCoste", (object?)centroCoste ?? DBNull.Value);
+    cmd.Parameters.AddWithValue("@posicion", (object?)posicion ?? DBNull.Value);
+    cmd.Parameters.AddWithValue("@unidadOrg", (object?)unidadOrg ?? DBNull.Value);
+    cmd.Parameters.AddWithValue("@encargado", (object?)encargado ?? DBNull.Value);
+    cmd.Parameters.AddWithValue("@rol", (object?)rol ?? DBNull.Value);
+
+    await cmd.ExecuteNonQueryAsync();
+    imported++;
+}
+
+Console.WriteLine($"Importados {imported} empleados correctamente!");

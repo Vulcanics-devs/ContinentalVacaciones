@@ -1,0 +1,251 @@
+================================================================================
+DATABASE POPULATION INSTRUCTIONS - FREETIME APP
+================================================================================
+
+This guide provides step-by-step instructions to populate the database from
+scratch for the FreeTime vacation management application.
+
+================================================================================
+PREREQUISITES
+================================================================================
+
+1. SQL Server running on localhost with sa credentials
+2. Database connection string:
+   Server=localhost;Database=Vacaciones;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=True
+3. .NET 9.0 SDK installed
+4. CSV file: "New Data/Listado-Sindicalizados-Final.csv" with employee data
+
+================================================================================
+STEP 1: DROP AND RECREATE DATABASE
+================================================================================
+
+Navigate to the backend application folder:
+cd FreeTimeApp\tiempo-libre.app
+
+Drop the existing database:
+dotnet ef database drop --force
+
+Recreate database with migrations:
+dotnet ef database update
+
+This will:
+- Create all tables from Entity Framework migrations
+- Run all seeders (Roles, Reglas, RolesSemanales, SuperUser, VacacionesPorAntiguedad, etc.)
+
+================================================================================
+STEP 2: INSERT AREAS
+================================================================================
+
+Run the SQL script to insert organizational areas:
+sqlcmd -S localhost -U sa -P "YourStrong@Passw0rd" -d Vacaciones -C -i "New Data\InsertAreas.sql"
+
+This creates 24 areas based on UnidadOrganizativaSap codes.
+
+================================================================================
+STEP 3: COPY CSV FILE TO TEMP FOLDER
+================================================================================
+
+The DatabaseSeeder expects the CSV file in C:\temp:
+
+Create temp directory (if it doesn't exist):
+cmd /c "if not exist C:\temp mkdir C:\temp"
+
+Copy the CSV file:
+cmd /c "copy \"New Data\\Listado-Sindicalizados-Final.csv\" \"C:\\temp\\Listado-Sindicalizados-Final.csv\""
+
+================================================================================
+STEP 4: RUN DATABASE SEEDER TO CREATE EMPLOYEES
+================================================================================
+
+Navigate to DatabaseSeeder project:
+cd FreeTimeApp\DatabaseSeeder
+
+Run the seeder:
+dotnet run
+
+This will:
+- Read employee data from the CSV file
+- Create User records (with default password)
+- Assign "Empleado Sindicalizado" role to each user
+- Create Empleado records
+- Create Sindicalizado records
+
+Expected output: ~1055 employees created
+
+================================================================================
+STEP 5: LINK USERS TO AREAS AND GROUPS
+================================================================================
+
+Update users with their AreaId and GrupoId:
+sqlcmd -S localhost -U sa -P "YourStrong@Passw0rd" -d Vacaciones -C -i "UpdateUsersAreasAndGroups.sql"
+
+This matches:
+- Empleado.UnidadOrganizativa → Area.UnidadOrganizativaSap
+- Empleado.Rol → Grupo.Rol
+- Sets User.AreaId and User.GrupoId for each employee
+
+Expected output: ~1055 users updated
+
+================================================================================
+STEP 6: LINK SINDICALIZADOS TO GROUPS
+================================================================================
+
+Create the many-to-many relationship:
+sqlcmd -S localhost -U sa -P "YourStrong@Passw0rd" -d Vacaciones -C -i "LinkSindicalizadosToGrupos.sql"
+
+This populates the SindicalizadosPorGrupo junction table.
+
+Expected output: ~1055 links created
+
+================================================================================
+STEP 7: FIX AREA NAMES ENCODING (OPTIONAL)
+================================================================================
+
+If area names show encoding issues (e.g., "PreparaciA3n" instead of "Preparación"):
+
+The DatabaseSeeder can be used to fix this. Temporarily replace Program.cs with:
+
+using Microsoft.Data.SqlClient;
+
+var connectionString = "Server=localhost;Database=Vacaciones;User Id=sa;Password=YourStrong@Passw0rd;TrustServerCertificate=True";
+
+Console.WriteLine("=== Fixing Area Names Encoding ===\n");
+
+using (var conn = new SqlConnection(connectionString))
+{
+    conn.Open();
+
+    var updates = new Dictionary<int, string>
+    {
+        { 4, "Preparación de Materiales" },
+        { 5, "Construcción Llantas Radial" },
+        { 7, "Acabado Reparación Inspección" },
+        { 8, "Almacén Materias Primas" },
+        { 9, "Mantenimiento Área I" },
+        { 10, "Mantenimiento Área II" },
+        { 11, "Mantenimiento Área III" },
+        { 12, "Mantenimiento Eléctrico" },
+        { 13, "Mantenimiento Eléctrico II" },
+        { 14, "Mantenimiento Eléctrico III" },
+        { 15, "Metrología" },
+        { 17, "Aire Vapor Vacío Agua" },
+        { 18, "Almacén de Producto Terminado" },
+        { 19, "Construcción de Bladders" },
+        { 20, "Instructores Técnicos" },
+        { 24, "Vulcanización MX" }
+    };
+
+    foreach (var update in updates)
+    {
+        var cmd = new SqlCommand("UPDATE Areas SET NombreGeneral = @nombre WHERE AreaId = @id", conn);
+        cmd.Parameters.AddWithValue("@id", update.Key);
+        cmd.Parameters.AddWithValue("@nombre", update.Value);
+        cmd.ExecuteNonQuery();
+        Console.WriteLine($"Updated Area {update.Key}: {update.Value}");
+    }
+
+    Console.WriteLine("\n=== Area Names Fixed! ===");
+}
+
+Then run:
+cd FreeTimeApp\DatabaseSeeder
+dotnet run
+
+================================================================================
+VERIFICATION QUERIES
+================================================================================
+
+After completing all steps, verify the data:
+
+sqlcmd -S localhost -U sa -P "YourStrong@Passw0rd" -d Vacaciones -C -Q "
+SELECT 'Users' as TableName, COUNT(*) as Count FROM Users
+UNION ALL SELECT 'Empleados', COUNT(*) FROM Empleados
+UNION ALL SELECT 'Sindicalizados', COUNT(*) FROM Sindicalizados
+UNION ALL SELECT 'Areas', COUNT(*) FROM Areas
+UNION ALL SELECT 'Grupos', COUNT(*) FROM Grupos
+UNION ALL SELECT 'SindicalizadosPorGrupo', COUNT(*) FROM SindicalizadosPorGrupo;
+"
+
+Expected results:
+- Users: ~1057 (including SuperUsuario and other admin users)
+- Empleados: ~1055
+- Sindicalizados: ~1055
+- Areas: 24
+- Grupos: ~111
+- SindicalizadosPorGrupo: ~1055
+
+Check that users have Area and Group assignments:
+sqlcmd -S localhost -U sa -P "YourStrong@Passw0rd" -d Vacaciones -C -Q "
+SELECT COUNT(*) as UsersWithAreaAndGroup
+FROM Users
+WHERE AreaId IS NOT NULL AND GrupoId IS NOT NULL AND Nomina IS NOT NULL;
+"
+
+Expected: ~1055 users with both AreaId and GrupoId assigned
+
+================================================================================
+SQL SCRIPTS REFERENCE
+================================================================================
+
+The following SQL scripts should be available in the project root:
+
+1. InsertAreas.sql
+   - Creates 24 organizational areas
+   - Located in: New Data\InsertAreas.sql
+
+2. UpdateUsersAreasAndGroups.sql
+   - Links users to their areas and groups
+   - Updates User.AreaId and User.GrupoId
+
+3. LinkSindicalizadosToGrupos.sql
+   - Creates many-to-many relationships
+   - Populates SindicalizadosPorGrupo table
+
+================================================================================
+TROUBLESHOOTING
+================================================================================
+
+Issue: "Empleado_Sindicalizado role not found"
+Solution: Ensure the backend application has run at least once to seed roles,
+or run: dotnet ef database update
+
+Issue: User.AreaId or User.GrupoId is NULL for some employees
+Solution: Check that the employee has a matching record in the Empleados table
+with valid UnidadOrganizativa and Rol values
+
+Issue: CSV encoding errors
+Solution: Ensure the CSV file is saved with UTF-8 encoding
+
+Issue: Groups were not created
+Solution: Check that Areas exist first. Groups are created automatically by
+the backend application's seeder when it starts
+
+================================================================================
+DEFAULT USER CREDENTIALS
+================================================================================
+
+After setup, the following default users are available:
+
+SuperUsuario:
+- Username: admin
+- Password: Admin123! (or as configured in SuperUserSeeder.cs)
+- Role: Super_Usuario
+
+All Employee Users:
+- Username: [Nomina number] (e.g., 32000076)
+- Password: [Default password hash - users must reset on first login]
+- Role: Empleado_Sindicalizado
+
+================================================================================
+NOTES
+================================================================================
+
+- The DatabaseSeeder project reads from C:\temp\Listado-Sindicalizados-Final.csv
+- Default passwords use a placeholder hash and should be reset
+- Grupo entities are auto-created by backend seeders based on CSV data
+- Area names may require encoding fixes if displaying incorrectly
+- All timestamps are stored in UTC
+
+================================================================================
+END OF INSTRUCTIONS
+================================================================================

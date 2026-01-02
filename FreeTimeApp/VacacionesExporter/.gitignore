@@ -1,0 +1,10 @@
+## Ignorar archivos generados
+bin/
+obj/
+*.xlsx
+*.user
+*.suo
+
+## Ignorar archivos de configuración sensibles
+appsettings.Development.json
+appsettings.Production.json

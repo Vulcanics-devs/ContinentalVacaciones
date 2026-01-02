@@ -1,0 +1,178 @@
+﻿using System;
+using System.Linq;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using tiempo_libre.DTOs;
+using tiempo_libre.Models;
+
+namespace tiempo_libre.Services
+{
+    public class PermutaService
+    {
+        private readonly FreeTimeDbContext _db;
+        private readonly ILogger<PermutaService> _logger;
+
+        public PermutaService(
+            FreeTimeDbContext db,
+            ILogger<PermutaService> logger)
+        {
+            _db = db;
+            _logger = logger;
+        }
+
+        public async Task<ApiResponse<SolicitudPermutaResponse>> SolicitarPermutaAsync(
+            SolicitudPermutaRequest request, int usuarioSolicitanteId)
+        {
+            try
+            {
+                if (!DateOnly.TryParseExact(request.FechaPermuta, "yyyy-MM-dd",
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None,
+                    out var fechaPermuta))
+                {
+                    return new ApiResponse<SolicitudPermutaResponse>(false, null,
+                        "Formato de fecha inválido");
+                }
+
+                var empleadoOrigen = await _db.Users
+                    .Include(u => u.Grupo)
+                    .Include(u => u.Area)
+                    .FirstOrDefaultAsync(u => u.Id == request.EmpleadoOrigenId);
+
+                var empleadoDestino = await _db.Users
+                    .Include(u => u.Grupo)
+                    .Include(u => u.Area)
+                    .FirstOrDefaultAsync(u => u.Id == request.EmpleadoDestinoId);
+
+                if (empleadoOrigen == null || empleadoDestino == null)
+                {
+                    return new ApiResponse<SolicitudPermutaResponse>(false, null,
+                        "Uno o ambos empleados no fueron encontrados");
+                }
+
+                if (empleadoOrigen.GrupoId != empleadoDestino.GrupoId)
+                {
+                    return new ApiResponse<SolicitudPermutaResponse>(false, null,
+                        "Los empleados deben pertenecer al mismo grupo");
+                }
+
+                var permuta = new Permuta
+                {
+                    EmpleadoOrigenId = request.EmpleadoOrigenId,
+                    EmpleadoDestinoId = request.EmpleadoDestinoId,
+                    FechaPermuta = fechaPermuta,
+                    TurnoEmpleadoOrigen = request.TurnoEmpleadoOrigen,
+                    TurnoEmpleadoDestino = request.TurnoEmpleadoDestino,
+                    Motivo = request.Motivo,
+                    SolicitadoPorId = usuarioSolicitanteId,
+                    FechaSolicitud = DateTime.UtcNow
+                };
+
+                _db.Permutas.Add(permuta);
+                await _db.SaveChangesAsync();
+
+                var response = new SolicitudPermutaResponse
+                {
+                    Exitoso = true,
+                    Mensaje = "Permuta registrada exitosamente",
+                    PermutaId = permuta.Id,
+                    EmpleadoOrigen = new EmpleadoPermutaInfo
+                    {
+                        Id = empleadoOrigen.Id,
+                        Nombre = empleadoOrigen.FullName ?? string.Empty,
+                        TurnoOriginal = request.TurnoEmpleadoOrigen,
+                        TurnoNuevo = request.TurnoEmpleadoDestino
+                    },
+                    EmpleadoDestino = new EmpleadoPermutaInfo
+                    {
+                        Id = empleadoDestino.Id,
+                        Nombre = empleadoDestino.FullName ?? string.Empty,
+                        TurnoOriginal = request.TurnoEmpleadoDestino,
+                        TurnoNuevo = request.TurnoEmpleadoOrigen
+                    },
+                    FechaPermuta = fechaPermuta
+                };
+
+                _logger.LogInformation("Permuta registrada: {Origen} ⇄ {Destino} - {Fecha}",
+                    empleadoOrigen.FullName, empleadoDestino.FullName, fechaPermuta);
+
+                return new ApiResponse<SolicitudPermutaResponse>(true, response, null);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al registrar permuta");
+                return new ApiResponse<SolicitudPermutaResponse>(false, null,
+                    $"Error: {ex.Message}");
+            }
+        }
+
+        // Método para exportar a CSV
+        public async Task<byte[]> ExportarPermutasACsvAsync(int? anio = null)
+        {
+            var query = _db.Permutas
+                .Include(p => p.EmpleadoOrigen)
+                .Include(p => p.EmpleadoDestino)
+                .Include(p => p.SolicitadoPor)
+                .AsQueryable();
+
+            if (anio.HasValue)
+            {
+                query = query.Where(p => p.FechaPermuta.Year == anio.Value);
+            }
+
+            var permutas = await query
+                .OrderBy(p => p.FechaSolicitud)
+                .ToListAsync();
+
+            var csv = new System.Text.StringBuilder();
+            csv.AppendLine("ID,Fecha Solicitud,Fecha Permuta,Empleado Origen,Turno Origen,Empleado Destino,Turno Destino,Motivo,Solicitado Por");
+
+            foreach (var p in permutas)
+            {
+                csv.AppendLine($"{p.Id},{p.FechaSolicitud:yyyy-MM-dd HH:mm},{p.FechaPermuta:yyyy-MM-dd}," +
+                    $"{p.EmpleadoOrigen?.FullName},{p.TurnoEmpleadoOrigen}," +
+                    $"{p.EmpleadoDestino?.FullName},{p.TurnoEmpleadoDestino}," +
+                    $"\"{p.Motivo}\",{p.SolicitadoPor?.FullName}");
+            }
+
+            return System.Text.Encoding.UTF8.GetBytes(csv.ToString());
+        }
+
+        public async Task<PermutasListResponse> ObtenerPermutasAsync(int? anio = null)
+        {
+            var query = _db.Permutas
+                .Include(p => p.EmpleadoOrigen)
+                .Include(p => p.EmpleadoDestino)
+                .Include(p => p.SolicitadoPor)
+                .AsQueryable();
+
+            if (anio.HasValue)
+            {
+                query = query.Where(p => p.FechaPermuta.Year == anio.Value);
+            }
+
+            var permutas = await query
+                .OrderByDescending(p => p.FechaSolicitud)
+                .Select(p => new PermutaListItem
+                {
+                    Id = p.Id,
+                    EmpleadoOrigenNombre = p.EmpleadoOrigen.FullName,
+                    EmpleadoDestinoNombre = p.EmpleadoDestino.FullName,
+                    FechaPermuta = p.FechaPermuta,
+                    TurnoEmpleadoOrigen = p.TurnoEmpleadoOrigen,
+                    TurnoEmpleadoDestino = p.TurnoEmpleadoDestino,
+                    Motivo = p.Motivo,
+                    SolicitadoPorNombre = p.SolicitadoPor.FullName,
+                    FechaSolicitud = p.FechaSolicitud
+                })
+                .ToListAsync();
+
+            return new PermutasListResponse
+            {
+                Permutas = permutas,
+                Total = permutas.Count
+            };
+        }
+    }
+}

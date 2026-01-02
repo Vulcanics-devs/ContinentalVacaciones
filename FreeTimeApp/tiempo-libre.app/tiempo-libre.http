@@ -1,0 +1,6 @@
+@tiempo_libre_HostAddress = http://localhost:5142
+
+GET {{tiempo_libre_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
