@@ -190,7 +190,7 @@ export const Plantilla = () => {
 
     const [availableGroups, setAvailableGroups] = useState<Array<{ id: number; label: string }>>([]);
     const leadersCacheRef = useRef<Map<number, string>>(new Map());
-    const transformGroupRole = (role: string) => role.split('_')[0];
+    const transformGroupRole = (role?: string) => role ?? 'Sin grupo';
 
     // OPTIMIZACIÓN: Usar useRef para evitar cambios de referencia
     const allowedAreasRef = useRef(allowedAreas);
@@ -309,7 +309,7 @@ export const Plantilla = () => {
             nombre: e.fullName ?? '',
             areaId: e.area?.areaId,
             area: e.area?.nombreGeneral ?? 'Sin área',
-            grupo: transformGroupRole(e.grupo?.rol || ''),
+            grupo: transformGroupRole(e.grupo?.rol),
             antiguedad: (() => {
                 const d = e.fechaIngreso ? new Date(e.fechaIngreso) : undefined;
                 if (!d) return '—';

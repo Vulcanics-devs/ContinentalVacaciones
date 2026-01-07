@@ -57,6 +57,38 @@ namespace tiempo_libre.Services
                         "Los empleados deben pertenecer al mismo grupo");
                 }
 
+                // Después de validar empleadoOrigen
+                if (empleadoOrigen == null)
+                {
+                    return new ApiResponse<SolicitudPermutaResponse>(false, null,
+                        "Empleado origen no encontrado");
+                }
+
+                // Validación condicional de empleado destino
+                //User? empleadoDestino = null;
+                bool esCambioIndividual = !request.EmpleadoDestinoId.HasValue || request.EmpleadoDestinoId.Value == 0;
+
+                if (!esCambioIndividual)
+                {
+                    empleadoDestino = await _db.Users
+                        .Include(u => u.Grupo)
+                        .Include(u => u.Area)
+                        .FirstOrDefaultAsync(u => u.Id == request.EmpleadoDestinoId);
+
+                    if (empleadoDestino == null)
+                    {
+                        return new ApiResponse<SolicitudPermutaResponse>(false, null,
+                            "Empleado destino no encontrado");
+                    }
+
+                    if (empleadoOrigen.GrupoId != empleadoDestino.GrupoId)
+                    {
+                        return new ApiResponse<SolicitudPermutaResponse>(false, null,
+                            "Los empleados deben pertenecer al mismo grupo");
+                    }
+                }
+
+                // Al crear la permuta
                 var permuta = new Permuta
                 {
                     EmpleadoOrigenId = request.EmpleadoOrigenId,
@@ -69,33 +101,34 @@ namespace tiempo_libre.Services
                     FechaSolicitud = DateTime.UtcNow
                 };
 
-                _db.Permutas.Add(permuta);
-                await _db.SaveChangesAsync();
-
+                // Al crear la respuesta
                 var response = new SolicitudPermutaResponse
                 {
                     Exitoso = true,
-                    Mensaje = "Permuta registrada exitosamente",
+                    Mensaje = esCambioIndividual ? "Cambio de turno registrado exitosamente" : "Permuta registrada exitosamente",
                     PermutaId = permuta.Id,
                     EmpleadoOrigen = new EmpleadoPermutaInfo
                     {
                         Id = empleadoOrigen.Id,
                         Nombre = empleadoOrigen.FullName ?? string.Empty,
                         TurnoOriginal = request.TurnoEmpleadoOrigen,
-                        TurnoNuevo = request.TurnoEmpleadoDestino
+                        TurnoNuevo = request.TurnoEmpleadoDestino ?? request.TurnoEmpleadoOrigen
                     },
-                    EmpleadoDestino = new EmpleadoPermutaInfo
+                    EmpleadoDestino = empleadoDestino != null ? new EmpleadoPermutaInfo
                     {
                         Id = empleadoDestino.Id,
                         Nombre = empleadoDestino.FullName ?? string.Empty,
-                        TurnoOriginal = request.TurnoEmpleadoDestino,
+                        TurnoOriginal = request.TurnoEmpleadoDestino ?? string.Empty,
                         TurnoNuevo = request.TurnoEmpleadoOrigen
-                    },
+                    } : null,
                     FechaPermuta = fechaPermuta
                 };
 
-                _logger.LogInformation("Permuta registrada: {Origen} ⇄ {Destino} - {Fecha}",
-                    empleadoOrigen.FullName, empleadoDestino.FullName, fechaPermuta);
+                // Actualizar log
+                _logger.LogInformation(esCambioIndividual
+                    ? "Cambio de turno registrado: {Origen} - {Fecha}"
+                    : "Permuta registrada: {Origen} ⇄ {Destino} - {Fecha}",
+                    empleadoOrigen.FullName, empleadoDestino?.FullName ?? "", fechaPermuta);
 
                 return new ApiResponse<SolicitudPermutaResponse>(true, response, null);
             }

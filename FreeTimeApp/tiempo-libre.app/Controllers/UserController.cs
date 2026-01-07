@@ -613,6 +613,15 @@ namespace tiempo_libre.app.Controllers
             return Ok(new ApiResponse<UserProfileDto>(true, profile));
         }
 
+        [HttpPost("invalidate-empleados-cache")]
+        [Authorize(Roles = "SuperUsuario")]
+        public IActionResult InvalidateEmpleadosCache()
+        {
+            // Este endpoint es solo para notificar al frontend que invalide su caché
+            _logger.LogInformation("Solicitud de invalidación de caché de empleados");
+            return Ok(new ApiResponse<object>(true, new { message = "Cache invalidation requested" }));
+        }
+
         // EP: Actualizar suplente basado en el rol
         [HttpPost("suplente")]
         [RolesAllowedAttribute("SuperUsuario", "JefeDeArea", "LiderDeGrupo", "IngenieroIndustrial", "Super Usuario", "Jefe De Area", "Lider De Grupo", "Ingeniero Industrial")]

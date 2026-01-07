@@ -1,4 +1,4 @@
-/**
+﻿/**
  * useEmpleadosSindicalizados Hook
  * Custom hook for managing unionized employees state and operations
  * Now uses caching through EmpleadosContext to reduce API calls
@@ -98,15 +98,23 @@ export const useEmpleadosSindicalizados = (
     }
   }, [currentRequest, getEmpleados]);
 
-  const refetch = useCallback(async () => {
-    setState(prev => ({ ...prev, loading: true, error: null }));
-    const sync = await syncEmpleados();
-    if (sync) {
-      fetchEmpleados();
-    }
-    setState(prev => ({ ...prev, loading: false, error: null }));
-    
-  }, [fetchEmpleados, syncEmpleados]);
+    const refetch = useCallback(async () => {
+        setState(prev => ({ ...prev, loading: true, error: null }));
+        try {
+            // ✅ Esperar la sincronización completa
+            const sync = await syncEmpleados();
+            if (sync) {
+                // ✅ Pequeño delay
+                await new Promise(resolve => setTimeout(resolve, 500));
+                await fetchEmpleados();
+            }
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Error al sincronizar empleados';
+            setState(prev => ({ ...prev, loading: false, error: errorMessage }));
+        } finally {
+            setState(prev => ({ ...prev, loading: false }));
+        }
+    }, [fetchEmpleados, syncEmpleados]);
 
   const setPage = useCallback((page: number) => {
     const newRequest = { ...currentRequest, Page: page };

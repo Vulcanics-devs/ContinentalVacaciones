@@ -15,7 +15,7 @@ namespace tiempo_libre.Services
     {
         private readonly IServiceProvider _serviceProvider;
         private readonly ILogger<SincronizacionRolesBackgroundService> _logger;
-        private readonly TimeSpan _intervalo = TimeSpan.FromHours(6); // Se ejecuta cada 6 horas
+        private readonly TimeSpan _intervalo = TimeSpan.FromMinutes(6); // Se ejecuta cada 6 horas
 
         public SincronizacionRolesBackgroundService(
             IServiceProvider serviceProvider,
@@ -35,14 +35,33 @@ namespace tiempo_libre.Services
                 {
                     await SincronizarRoles();
                     _logger.LogInformation($"Próxima sincronización en {_intervalo.TotalHours} horas");
-                    await Task.Delay(_intervalo, stoppingToken);
+
+                    try
+                    {
+                        await Task.Delay(_intervalo, stoppingToken);
+                    }
+                    catch (TaskCanceledException)
+                    {
+                        // Cancelación normal durante el shutdown
+                        break;
+                    }
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Error en el servicio de sincronización de roles");
-                    await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
+
+                    try
+                    {
+                        await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
+                    }
+                    catch (TaskCanceledException)
+                    {
+                        break;
+                    }
                 }
             }
+
+            _logger.LogInformation("Servicio de sincronización de roles detenido");
         }
 
         private async Task SincronizarRoles()
@@ -68,6 +87,23 @@ namespace tiempo_libre.Services
                         {
                             empleado.Rol = rolSAP.Regla;
                             registrosActualizados++;
+                        }
+
+                        // AGREGAR ESTO: Actualizar también en Users
+                        var user = await context.Users
+                            .FirstOrDefaultAsync(u => u.Nomina == rolSAP.Nomina);
+
+                        if (user != null && !string.IsNullOrEmpty(rolSAP.Regla))
+                        {
+                            var grupo = await context.Grupos
+                                .FirstOrDefaultAsync(g => g.Rol == rolSAP.Regla && g.AreaId == user.AreaId);
+
+                            if (grupo != null && user.GrupoId != grupo.GrupoId)
+                            {
+                                user.GrupoId = grupo.GrupoId;
+                                user.UpdatedAt = DateTime.UtcNow;
+                                registrosActualizados++;
+                            }
                         }
                     }
 

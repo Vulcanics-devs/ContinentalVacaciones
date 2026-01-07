@@ -318,7 +318,7 @@ export default function SolicitudDetallePage() {
                                     <span className="text-sm text-gray-500">Fecha Original:</span>
                                     <p className="font-medium">
                                         {solicitud.fechaOriginal && solicitud.fechaOriginal !== '0001-01-01'
-                                            ? format(new Date(solicitud.fechaOriginal), "d 'de' MMMM, yyyy", { locale: es })
+                                            ? format(new Date(solicitud.fechaOriginal + 'T00:00:00'), "d 'de' MMMM, yyyy", { locale: es })
                                             : 'No especificada'
                                         }
                                     </p>

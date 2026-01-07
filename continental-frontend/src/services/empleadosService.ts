@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Empleados Service
  * Handles API operations for unionized employees (empleados sindicalizados)
  * Now with integrated global caching to prevent unnecessary API calls
@@ -60,23 +60,30 @@ class EmpleadosService {
    * *
    * Sincronizar empleados sindicalizados
    */
-  async syncEmpleadosSindicalizados(): Promise<{created: number}> {
-    try {
-      logger.apiRequest('POST', '/api/UsersGenerator/generate-users-from-empleados', null);
+    /**
+   * Sincronizar empleados sindicalizados
+   */
+    async syncEmpleadosSindicalizados(): Promise<{ created: number }> {
+        try {
+            logger.apiRequest('POST', '/api/UsersGenerator/generate-users-from-empleados', null);
 
-      const response: ApiResponse<{created: number}> = await httpClient.post<{created: number}>('/api/UsersGenerator/generate-users-from-empleados');
+            const response: ApiResponse<{ created: number }> = await httpClient.post<{ created: number }>('/api/UsersGenerator/generate-users-from-empleados');
 
-      if (!response.success || !response.data) {
-        throw new Error(response.errorMsg || 'Error al sincronizar empleados sindicalizados');
-      }
+            if (!response.success || !response.data) {
+                throw new Error(response.errorMsg || 'Error al sincronizar empleados sindicalizados');
+            }
 
-      logger.apiResponse('POST', '/api/UsersGenerator/generate-users-from-empleados', 200, response.data);
-      return response.data;
-    } catch (error) {
-      logger.error('Error syncing empleados sindicalizados', error, 'EMPLEADOS_SERVICE');
-      throw error;
+            // AGREGAR ESTO: Limpiar el caché global después de sincronizar
+            globalEmpleadosCache.clear();
+            logger.debug('Cache de empleados limpiado después de sincronización');
+
+            logger.apiResponse('POST', '/api/UsersGenerator/generate-users-from-empleados', 200, response.data);
+            return response.data;
+        } catch (error) {
+            logger.error('Error syncing empleados sindicalizados', error, 'EMPLEADOS_SERVICE');
+            throw error;
+        }
     }
-  }
 
   /**
    * Get empleado sindicalizado by nomina

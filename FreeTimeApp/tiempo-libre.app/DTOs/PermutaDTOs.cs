@@ -10,9 +10,9 @@ namespace tiempo_libre.DTOs
         [JsonPropertyName("empleadoOrigenId")] // ✅ AGREGAR
         public int EmpleadoOrigenId { get; set; }
 
-        [Required]
+        //[Required]
         [JsonPropertyName("empleadoDestinoId")] // ✅ AGREGAR
-        public int EmpleadoDestinoId { get; set; }
+        public int? EmpleadoDestinoId { get; set; }
 
         [Required]
         [JsonPropertyName("fechaPermuta")] // ✅ AGREGAR
@@ -30,9 +30,9 @@ namespace tiempo_libre.DTOs
         [JsonPropertyName("turnoEmpleadoOrigen")]
         public string TurnoEmpleadoOrigen { get; set; } = string.Empty;
 
-        [Required] // ✅ AGREGAR Required
+        //[Required] // ✅ AGREGAR Required
         [JsonPropertyName("turnoEmpleadoDestino")]
-        public string TurnoEmpleadoDestino { get; set; } = string.Empty;
+        public string? TurnoEmpleadoDestino { get; set; } = string.Empty;
     }
 
     public class SolicitudPermutaResponse

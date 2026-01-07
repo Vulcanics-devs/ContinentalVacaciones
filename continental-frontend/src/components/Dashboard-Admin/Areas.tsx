@@ -193,7 +193,11 @@ export const Areas = () => {
         setGroupChanges(prev => {
             const newChanges = new Map(prev);
             const existingChanges = newChanges.get(groupId) || {};
-            newChanges.set(groupId, { ...existingChanges, [field]: value });
+
+            // Normalizar valor vacío a "0" para liderGrupo
+            const normalizedValue = (field === 'liderGrupo' && (value === '' || value === null)) ? '0' : value;
+
+            newChanges.set(groupId, { ...existingChanges, [field]: normalizedValue });
             return newChanges;
         });
     };
@@ -206,21 +210,28 @@ export const Areas = () => {
             try {
                 // Update group leader if changed
                 if (changes.liderGrupo !== undefined) {
-                    const userId = parseInt(changes.liderGrupo);
-                    console.log(`Processing leader change for group ${groupId}: userId=${userId}`);
+                    const liderValue = changes.liderGrupo.toString().trim();
+                    console.log(`Processing leader change for group ${groupId}: liderValue="${liderValue}"`);
 
                     try {
-                        if (userId > 0) {
-                            await groupService.updateGroupLeader(groupId, userId);
-                            successes.push(`Líder del grupo ${groupId} actualizado`);
-                        } else {
+                        // Si el valor es "0", "", o vacío, remover el líder
+                        if (liderValue === "0" || liderValue === "" || !liderValue) {
                             await groupService.removeGroupLeader(groupId);
                             successes.push(`Líder del grupo ${groupId} removido`);
+                        } else {
+                            const userId = parseInt(liderValue);
+                            if (!isNaN(userId) && userId > 0) {
+                                await groupService.updateGroupLeader(groupId, userId);
+                                successes.push(`Líder del grupo ${groupId} actualizado`);
+                            }
                         }
                     } catch (err: any) {
                         console.error(`Failed to update leader for group ${groupId}:`, err);
-                        // The service already handles 204, so if we're here it's a real error
-                        errors.push(`Líder del grupo ${groupId}`);
+                        if (err?.status !== 204 && err?.response?.status !== 204) {
+                            errors.push(`Líder del grupo ${groupId}`);
+                        } else {
+                            successes.push(`Líder del grupo ${groupId} actualizado`);
+                        }
                     }
                 }
 
@@ -238,8 +249,11 @@ export const Areas = () => {
                             successes.push(`Turno del grupo ${groupId} actualizado`);
                         } catch (err: any) {
                             console.error(`Failed to update shift for group ${groupId}:`, err);
-                            // The service already handles 204, so if we're here it's a real error
-                            errors.push(`Turno del grupo ${groupId}`);
+                            if (err?.status !== 204 && err?.response?.status !== 204) {
+                                errors.push(`Turno del grupo ${groupId}`);
+                            } else {
+                                successes.push(`Turno del grupo ${groupId} actualizado`);
+                            }
                         }
                     }
                 }

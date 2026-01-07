@@ -19,38 +19,86 @@ namespace tiempo_libre.Services
 			_logger = logger;
 		}
 
-		public async Task<int> SincronizarRolesDesdeRegla()
-		{
-			int registrosActualizados = 0;
+        public async Task<int> SincronizarRolesDesdeRegla()
+        {
+            int registrosActualizados = 0;
+            var empleadosCambiaronGrupo = new List<(User user, int grupoAnterior, int grupoNuevo)>();
 
-			var rolesEmpleadosSAP = await _context.RolesEmpleadosSAP
-				.Where(r => !string.IsNullOrEmpty(r.Regla))
-				.ToListAsync();
+            var rolesEmpleadosSAP = await _context.RolesEmpleadosSAP
+                .Where(r => !string.IsNullOrEmpty(r.Regla))
+                .ToListAsync();
 
-			foreach (var rolSAP in rolesEmpleadosSAP)
-			{
-				// Actualizar en tabla Empleados
-				var empleado = await _context.Empleados
-					.FirstOrDefaultAsync(e => e.Nomina == rolSAP.Nomina);
+            foreach (var rolSAP in rolesEmpleadosSAP)
+            {
+                // Actualizar Empleados
+                var empleado = await _context.Empleados
+                    .FirstOrDefaultAsync(e => e.Nomina == rolSAP.Nomina);
+                if (empleado != null && empleado.Rol != rolSAP.Regla)
+                {
+                    empleado.Rol = rolSAP.Regla;
+                    registrosActualizados++;
+                }
 
-				if (empleado != null && empleado.Rol != rolSAP.Regla)
-				{
-					empleado.Rol = rolSAP.Regla;
-					registrosActualizados++;
-				}
+                // Actualizar Users
+                var user = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Nomina == rolSAP.Nomina);
 
-				// Actualizar en tabla Users si existe
-				var user = await _context.Users
-					.FirstOrDefaultAsync(u => u.Nomina == rolSAP.Nomina);
+                if (user != null && !string.IsNullOrEmpty(rolSAP.Regla))
+                {
+                    var grupo = await _context.Grupos
+                        .FirstOrDefaultAsync(g => g.Rol == rolSAP.Regla && g.AreaId == user.AreaId);
 
-				// Nota: Users no tiene campo Rol directo, solo tiene relación con tabla Roles
-				// Si necesitas actualizar algo específico en Users, agrégalo aquí
-			}
+                    if (grupo != null && user.GrupoId != grupo.GrupoId)
+                    {
+                        var grupoAnterior = user.GrupoId ?? 0;
+                        user.GrupoId = grupo.GrupoId;
+                        user.UpdatedAt = DateTime.UtcNow;
+                        registrosActualizados++;
 
-			await _context.SaveChangesAsync();
-			_logger.LogInformation($"Sincronización completada. {registrosActualizados} registros actualizados.");
+                        // Guardar para regenerar calendario después
+                        empleadosCambiaronGrupo.Add((user, grupoAnterior, grupo.GrupoId));
+                    }
+                }
+            }
 
-			return registrosActualizados;
-		}
-	}
+            await _context.SaveChangesAsync();
+
+            // REGENERAR CALENDARIOS FUTUROS para empleados que cambiaron de grupo
+            foreach (var (user, grupoAnterior, grupoNuevo) in empleadosCambiaronGrupo)
+            {
+                await RegenerarCalendarioFuturo(user.Id);
+            }
+
+            _logger.LogInformation($"Sincronización completada. {registrosActualizados} registros actualizados. {empleadosCambiaronGrupo.Count} calendarios regenerados.");
+            return registrosActualizados;
+        }
+
+        private async Task RegenerarCalendarioFuturo(int userId)
+        {
+            try
+            {
+                var fechaHoy = DateOnly.FromDateTime(DateTime.Today);
+
+                // Eliminar solo registros FUTUROS del calendario viejo
+                var diasFuturos = await _context.DiasCalendarioEmpleado
+                    .Where(d => d.IdUsuarioEmpleadoSindicalizado == userId && d.FechaDelDia >= fechaHoy)
+                    .ToListAsync();
+
+                if (diasFuturos.Any())
+                {
+                    _context.DiasCalendarioEmpleado.RemoveRange(diasFuturos);
+                    await _context.SaveChangesAsync();
+
+                    _logger.LogInformation($"Eliminados {diasFuturos.Count} días futuros para usuario {userId}");
+                }
+
+                // NOTA: Aquí podrías llamar a EmployeesCalendarsGenerator si necesitas regenerar
+                // O esperar a que el proceso de generación automática lo haga
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error al regenerar calendario para usuario {userId}");
+            }
+        }
+    }
 }

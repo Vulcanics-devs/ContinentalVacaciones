@@ -22,18 +22,29 @@ public class GrupoController : ControllerBase
     // PUT: api/Grupo/{id}/Lider
     [HttpPut("{id}/Lider")]
     [Authorize(Roles = "SuperUsuario")]
-    public async Task<IActionResult> AsignarLider(int id, [FromBody] int liderId)
+    public async Task<IActionResult> AsignarLider(int id, [FromBody] int? liderId)
     {
         var grupo = await _db.Grupos.FindAsync(id);
         if (grupo == null)
         {
             return NotFound(new ApiResponse<Grupo>(false, null, "Grupo no encontrado"));
         }
-        var lider = await _db.Users.FindAsync(liderId);
+
+        // Si liderId es null o 0, remover el líder
+        if (liderId == null || liderId == 0)
+        {
+            grupo.LiderId = null;
+            await _db.SaveChangesAsync();
+            return Ok(new ApiResponse<Grupo>(true, grupo));
+        }
+
+        // Validar que el líder existe
+        var lider = await _db.Users.FindAsync(liderId.Value);
         if (lider == null)
         {
             return BadRequest(new ApiResponse<Grupo>(false, null, "El líder especificado no existe"));
         }
+
         grupo.LiderId = liderId;
         await _db.SaveChangesAsync();
         return Ok(new ApiResponse<Grupo>(true, grupo));

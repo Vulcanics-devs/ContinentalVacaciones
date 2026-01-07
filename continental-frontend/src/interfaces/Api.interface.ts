@@ -1013,12 +1013,12 @@ export interface SolicitudFilters {
 // Interfaces para Permutas
 export interface SolicitudPermutaRequest {
     empleadoOrigenId: number;
-    empleadoDestinoId: number;
+    empleadoDestinoId: number | null;
     fechaPermuta: string; // Mantener como string en frontend
     motivo: string;
     solicitadoPor: number; // ✅ Agregar este campo
     turnoEmpleadoOrigen: string; // ✅ AGREGAR
-    turnoEmpleadoDestino: string;
+    turnoEmpleadoDestino: string | null;
 }
 
 export interface EmpleadoPermutaInfo {

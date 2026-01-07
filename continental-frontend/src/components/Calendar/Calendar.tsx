@@ -150,7 +150,7 @@ const CalendarComponent = ({ month, onMonthChange, onSelectDay, onRemoveDay, sel
   
   // Calcular el año apropiado basado en el período actual
   const currentYear = new Date().getFullYear();
-  const targetYear = currentYear + 1;
+  const targetYear = currentYear;
   
   const {
     schedule,

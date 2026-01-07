@@ -16,8 +16,8 @@ namespace tiempo_libre.Models
         [ForeignKey(nameof(EmpleadoOrigenId))]
         public virtual User? EmpleadoOrigen { get; set; }
 
-        [Required]
-        public int EmpleadoDestinoId { get; set; }
+        //[Required]
+        public int? EmpleadoDestinoId { get; set; }
 
         [ForeignKey(nameof(EmpleadoDestinoId))]
         public virtual User? EmpleadoDestino { get; set; }
@@ -29,9 +29,9 @@ namespace tiempo_libre.Models
         [MaxLength(50)]
         public string TurnoEmpleadoOrigen { get; set; } = string.Empty;
 
-        [Required]
+        //[Required]
         [MaxLength(50)]
-        public string TurnoEmpleadoDestino { get; set; } = string.Empty;
+        public string? TurnoEmpleadoDestino { get; set; } = string.Empty;
 
         [Required]
         [MaxLength(500)]

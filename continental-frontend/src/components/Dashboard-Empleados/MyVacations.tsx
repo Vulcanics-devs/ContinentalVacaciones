@@ -362,7 +362,7 @@ const MyVacations = ({ currentPeriod }: { currentPeriod: Period }) => {
                 onClose={() => setShowSolicitarPermisoModal(false)}
                 nomina={parseInt((selectedEmployee?.username || user?.username) || "0")}
                 nombreEmpleado={selectedEmployee?.fullName || user?.fullName || ''}
-                onPermisoRegistrado={() => {
+                onSolicitudCreada={() => {
                     toast.success("Solicitud enviada exitosamente. Pendiente de aprobación por el Jefe de Área.");
                 }}
             />

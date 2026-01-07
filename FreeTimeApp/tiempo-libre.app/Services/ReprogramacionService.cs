@@ -116,16 +116,21 @@ namespace tiempo_libre.Services
                 }
 
                 // 5. Validar fechas
-                if (vacacionOriginal.FechaVacacion <= DateOnly.FromDateTime(DateTime.Today))
-                {
-                    return new ApiResponse<SolicitudReprogramacionResponse>(false, null,
-                        "No se pueden reprogramar vacaciones de fechas pasadas o del dA-a actual");
-                }
+                //if (vacacionOriginal.FechaVacacion <= DateOnly.FromDateTime(DateTime.Today))
+                //{
+                //    return new ApiResponse<SolicitudReprogramacionResponse>(false, null,
+                //        "No se pueden reprogramar vacaciones de fechas pasadas o del dA-a actual");
+                //}
 
-                if (request.FechaNueva <= DateOnly.FromDateTime(DateTime.Today))
+                //if (request.FechaNueva <= DateOnly.FromDateTime(DateTime.Today))
+                //{
+                //    return new ApiResponse<SolicitudReprogramacionResponse>(false, null,
+                //        "La fecha nueva no puede ser en el pasado o el dA-a actual");
+                //}
+                if (request.FechaNueva.Year < 2025)
                 {
                     return new ApiResponse<SolicitudReprogramacionResponse>(false, null,
-                        "La fecha nueva no puede ser en el pasado o el dA-a actual");
+                        "La fecha debe ser del año 2020 en adelante");
                 }
 
                 // 6. Validar dA-as inhA-biles
@@ -428,6 +433,7 @@ namespace tiempo_libre.Services
         {
             try
             {
+                _db.Database.SetCommandTimeout(60);
                 var usuarioConsulta = await _db.Users
                     .Include(u => u.Roles)
                     .FirstOrDefaultAsync(u => u.Id == usuarioConsultaId);
@@ -476,6 +482,7 @@ namespace tiempo_libre.Services
                             n.IdUsuarioEmisor == solicitanteId)
                         .Select(n => n.IdSolicitud!.Value)
                         .Distinct()
+                        .Take(500)
                         .ToListAsync();
 
                     if (solicitudIdsDelUsuario.Any())
@@ -529,11 +536,13 @@ namespace tiempo_libre.Services
                 var notificacionesSolicitantes = solicitudIds.Count == 0
                     ? new List<Notificaciones>()
                     : await _db.Notificaciones
+                        .AsNoTracking() // ← Agregar esto para mejor rendimiento
                         .Include(n => n.UsuarioEmisor)
                         .Where(n =>
                             n.IdSolicitud.HasValue &&
                             solicitudIds.Contains(n.IdSolicitud.Value) &&
                             n.TipoDeNotificacion == TiposDeNotificacionEnum.SolicitudReprogramacion)
+                        .Take(solicitudIds.Count) // ← Limitar resultados
                         .ToListAsync();
 
                 var solicitantePorSolicitud = notificacionesSolicitantes
@@ -635,19 +644,19 @@ namespace tiempo_libre.Services
                     return new ApiResponse<ValidarReprogramacionResponse>(true, response, null);
                 }
 
-                if (vacacionOriginal.FechaVacacion <= DateOnly.FromDateTime(DateTime.Today))
-                {
-                    response.EsValida = false;
-                    response.MotivoInvalidez = "No se pueden reprogramar vacaciones pasadas";
-                    return new ApiResponse<ValidarReprogramacionResponse>(true, response, null);
-                }
+                //if (vacacionOriginal.FechaVacacion <= DateOnly.FromDateTime(DateTime.Today))
+                //{
+                //    response.EsValida = false;
+                //    response.MotivoInvalidez = "No se pueden reprogramar vacaciones pasadas";
+                //    return new ApiResponse<ValidarReprogramacionResponse>(true, response, null);
+                //}
 
-                if (request.FechaNueva <= DateOnly.FromDateTime(DateTime.Today))
-                {
-                    response.EsValida = false;
-                    response.MotivoInvalidez = "La fecha nueva no puede ser en el pasado";
-                    return new ApiResponse<ValidarReprogramacionResponse>(true, response, null);
-                }
+                //if (request.FechaNueva <= DateOnly.FromDateTime(DateTime.Today))
+                //{
+                //    response.EsValida = false;
+                //    response.MotivoInvalidez = "La fecha nueva no puede ser en el pasado";
+                //    return new ApiResponse<ValidarReprogramacionResponse>(true, response, null);
+                //}
 
                 var esDiaInhabil = await _db.DiasInhabiles
                     .AnyAsync(d => d.Fecha == request.FechaNueva);

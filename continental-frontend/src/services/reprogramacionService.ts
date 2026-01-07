@@ -175,9 +175,13 @@ export class ReprogramacionService {
                 .sort((a, b) => new Date(b.fechaSolicitud).getTime() - new Date(a.fechaSolicitud).getTime())
                 .slice(0, limite);
             return solicitudesOrdenadas;
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error al obtener últimas solicitudes:', error);
-            // Retornar array vacío en caso de error para no romper la UI
+            // SI ES ERROR 400 (timeout del backend), retornar vacío
+            if (error?.status === 400 || error?.message?.includes('timeout')) {
+                console.warn('⚠️ Timeout en consulta de solicitudes, retornando vacío');
+                return [];
+            }
             return [];
         }
     }

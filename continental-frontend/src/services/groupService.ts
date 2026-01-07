@@ -38,13 +38,11 @@ export const groupService = {
     async removeGroupLeader(groupId: number): Promise<void> {
         try {
             console.log(`Removing leader from group ${groupId}`);
-
-            // Enviar 0 para remover líder
+            // Enviar null en lugar de 0
             const response = await httpClient.put<ApiResponse<void>>(
                 `/api/Grupo/${groupId}/Lider`,
-                0
+                null
             );
-
             console.log(`Group ${groupId} leader removal response:`, response);
             console.log(`Successfully removed leader from group ${groupId}`);
         } catch (error: any) {
@@ -53,7 +51,6 @@ export const groupService = {
                 console.log(`Group ${groupId} leader removed successfully (204 No Content)`);
                 return; // It's actually a success
             }
-
             console.error(`Error removing leader from group ${groupId}:`, error);
             throw error;
         }

@@ -34,6 +34,7 @@ export const PermutaModal = ({
     const [searchTerm, setSearchTerm] = useState("");
     const [empleadosDisponibles, setEmpleadosDisponibles] = useState<UsuarioInfoDto[]>([]);
     const [showSearch, setShowSearch] = useState(false);
+    const [esCambioIndividual, setEsCambioIndividual] = useState(false);
 
     // Buscar empleados del mismo grupo
     useEffect(() => {
@@ -75,29 +76,43 @@ export const PermutaModal = ({
             return;
         }
 
+        if (!fechaPermuta || !motivo.trim() || !turnoOrigen) {
+            toast.error("Por favor completa todos los campos obligatorios");
+            return;
+        }
+
+        if (!esCambioIndividual && (!empleadoDestino || !turnoDestino)) {
+            toast.error("Por favor selecciona el empleado destino y su turno");
+            return;
+        }
+
         setLoading(true);
         try {
             const payload: PermutaRequest = {
                 empleadoOrigenId: empleadoOrigen.id,
-                empleadoDestinoId: empleadoDestino.id,
+                empleadoDestinoId: esCambioIndividual ? null : empleadoDestino!.id,
                 fechaPermuta: fechaPermuta,
                 motivo: motivo.trim(),
                 solicitadoPor: solicitadoPorId,
-                turnoEmpleadoOrigen: turnoOrigen, // ✅ AGREGAR
-                turnoEmpleadoDestino: turnoDestino,
+                turnoEmpleadoOrigen: turnoOrigen,
+                turnoEmpleadoDestino: esCambioIndividual ? null : turnoDestino,
             };
             console.log("🚀 Payload a enviar:", payload);
             console.log("📋 JSON:", JSON.stringify(payload, null, 2));
             const response = await permutasService.solicitarPermuta(payload);
 
             if (response.exitoso) {
-                toast.success("Permuta solicitada exitosamente", {
-                    description: `${empleadoOrigen.fullName} ⇄ ${empleadoDestino.fullName}`,
+                toast.success(esCambioIndividual ? "Cambio de turno registrado" : "Permuta solicitada exitosamente", {
+                    description: esCambioIndividual
+                        ? `${empleadoOrigen.fullName} cambia a turno ${turnoOrigen}`
+                        : `${empleadoOrigen.fullName} ⇄ ${empleadoDestino!.fullName}`,
                 });
                 handleClose();
             } else {
                 toast.error(response.mensaje || "Error al procesar la permuta");
             }
+
+
         } catch (error: any) {
             console.error("Error en permuta:", error);
             toast.error(error.message || "Error al solicitar la permuta");
@@ -129,6 +144,24 @@ export const PermutaModal = ({
                             <ArrowLeftRight className="w-5 h-5 text-blue-600" />
                             Solicitar Permuta de Turno
                         </h2>
+                        <div className="mb-4 flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
+                            <input
+                                type="checkbox"
+                                id="cambioIndividual"
+                                checked={esCambioIndividual}
+                                onChange={(e) => {
+                                    setEsCambioIndividual(e.target.checked);
+                                    if (e.target.checked) {
+                                        setEmpleadoDestino(null);
+                                        setTurnoDestino("");
+                                    }
+                                }}
+                                className="w-4 h-4"
+                            />
+                            <label htmlFor="cambioIndividual" className="text-sm font-medium text-gray-700 cursor-pointer">
+                                Cambio individual (sin intercambio con otro empleado)
+                            </label>
+                        </div>
                         <p className="text-sm text-gray-600 mb-6">
                             Intercambia el turno entre dos empleados del mismo grupo
                         </p>

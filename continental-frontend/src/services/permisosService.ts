@@ -1,4 +1,4 @@
-import { httpClient } from './httpClient';
+Ôªøimport { httpClient } from './httpClient';
 import { logger } from '@/utils/logger';
 import type { ApiResponse } from '@/interfaces/Api.interface';
 
@@ -71,7 +71,7 @@ export interface EliminarPermisoRequest {
 
 class PermisosIncapacidadesService {
     /**
-     * Obtiene el cat·logo de tipos de permisos e incapacidades
+     * Obtiene el cat√°logo de tipos de permisos e incapacidades
      */
     async obtenerCatalogo(): Promise<TipoPermiso[]> {
         try {
@@ -81,7 +81,7 @@ class PermisosIncapacidadesService {
                 await httpClient.get('/api/permisos-incapacidades/catalogo');
 
             if (!response.success || !response.data) {
-                throw new Error(response.errorMsg || 'Error al obtener cat·logo de permisos');
+                throw new Error(response.errorMsg || 'Error al obtener cat√°logo de permisos');
             }
 
             logger.apiResponse('GET', '/api/permisos-incapacidades/catalogo', 200, response.data);
@@ -137,7 +137,7 @@ class PermisosIncapacidadesService {
     }
 
     /**
-     * Obtiene permisos de un empleado por nÛmina
+     * Obtiene permisos de un empleado por n√≥mina
      */
     async obtenerPermisosPorNomina(
         nomina: number,
@@ -169,23 +169,26 @@ class PermisosIncapacidadesService {
     /**
      * Elimina un permiso o incapacidad (solo registros manuales)
      */
-    async eliminarPermiso(request: EliminarPermisoRequest): Promise<void> {
-        try {
-            logger.apiRequest('DELETE', '/api/permisos-incapacidades/eliminar', request);
+    //async eliminarPermiso(request: EliminarPermisoRequest): Promise<void> {
+    //    try {
+    //        logger.apiRequest('DELETE', '/api/permisos-incapacidades/eliminar', request);
 
-            const response: ApiResponse<null> =
-                await httpClient.delete('/api/permisos-incapacidades/eliminar', request);
+    //        // ‚úÖ FIX: Pasar los datos en el body usando config
+    //        const response: ApiResponse<null> =
+    //            await httpClient.delete('/api/permisos-incapacidades/eliminar', {
+    //                body: request
+    //            });
 
-            if (!response.success) {
-                throw new Error(response.errorMsg || 'Error al eliminar permiso');
-            }
+    //        if (!response.success) {
+    //            throw new Error(response.errorMsg || 'Error al eliminar permiso');
+    //        }
 
-            logger.apiResponse('DELETE', '/api/permisos-incapacidades/eliminar', 200, null);
-        } catch (error) {
-            logger.error('Error deleting permiso', error, 'PERMISOS_SERVICE');
-            throw error;
-        }
-    }
+    //        logger.apiResponse('DELETE', '/api/permisos-incapacidades/eliminar', 200, null);
+    //    } catch (error) {
+    //        logger.error('Error deleting permiso', error, 'PERMISOS_SERVICE');
+    //        throw error;
+    //    }
+    //}
 }
 
 export const permisosService = new PermisosIncapacidadesService();
