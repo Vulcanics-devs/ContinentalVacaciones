@@ -179,14 +179,42 @@ class SolicitudesPermisosService {
     }
 
     /**
+    * Obtiene una solicitud específica por ID
+    */
+    async obtenerSolicitudPorId(id: number): Promise<SolicitudPermisoDto> {
+        try {
+            logger.apiRequest('GET', `/api/solicitudes-permisos/${id}`, null);
+
+            const response: ApiResponse<SolicitudPermisoDto> =
+                await httpClient.get(`/api/solicitudes-permisos/${id}`);
+
+            if (!response.success || !response.data) {
+                throw new Error(response.errorMsg || 'Error al obtener solicitud');
+            }
+
+            logger.apiResponse('GET', `/api/solicitudes-permisos/${id}`, 200, response.data);
+            return response.data;
+        } catch (error) {
+            logger.error('Error fetching solicitud by id', error, 'SOLICITUDES_PERMISOS_SERVICE');
+            throw error;
+        }
+    }
+
+    /**
      * Responde a una solicitud de permiso (aprobar o rechazar)
      */
     async responderSolicitud(request: ResponderSolicitudRequest): Promise<void> {
         try {
-            logger.apiRequest('POST', '/api/solicitudes-permisos/responder', request);
+            const payload = {
+                SolicitudId: request.solicitudId,
+                Aprobar: request.aprobar,
+                MotivoRechazo: request.motivoRechazo
+            };
+
+            logger.apiRequest('POST', '/api/solicitudes-permisos/responder', payload);
 
             const response: ApiResponse<null> =
-                await httpClient.post('/api/solicitudes-permisos/responder', request);
+                await httpClient.post('/api/solicitudes-permisos/responder', payload);
 
             if (!response.success) {
                 throw new Error(response.errorMsg || 'Error al responder solicitud');

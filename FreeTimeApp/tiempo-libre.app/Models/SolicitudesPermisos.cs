@@ -25,8 +25,7 @@ namespace tiempo_libre.Models
         /// Código SAP de ausencia
         /// </summary>
         [Required]
-        [MaxLength(10)]
-        public string ClAbPre { get; set; } = string.Empty;
+        public int ClAbPre { get; set; }
 
         [Required]
         public DateOnly FechaInicio { get; set; }

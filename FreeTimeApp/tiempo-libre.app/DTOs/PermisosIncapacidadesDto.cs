@@ -72,8 +72,8 @@ namespace tiempo_libre.DTOs
         public int ClAbPre { get; set; }
         public string ClaveVisualizacion { get; set; } = string.Empty; // P, V, G, E, A, M, R, S, O, H
         public string ClaseAbsentismo { get; set; } = string.Empty; // Descripción legible
-        public int Dias { get; set; }
-        public int DiaNat { get; set; }
+        public double Dias { get; set; }
+        public double DiaNat { get; set; }
         public string? Observaciones { get; set; }
         public bool EsRegistroManual { get; set; }
         public DateTime FechaRegistro { get; set; }

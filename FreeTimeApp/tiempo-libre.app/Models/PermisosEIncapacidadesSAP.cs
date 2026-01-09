@@ -24,7 +24,7 @@ namespace tiempo_libre.Models
         public string Nombre { get; set; } = string.Empty;
 
         [MaxLength(200)]
-        public string Posicion { get; set; } = string.Empty;
+        public string? Posicion { get; set; } = string.Empty;
 
         [Required]
         public DateOnly Desde { get; set; }
@@ -36,24 +36,23 @@ namespace tiempo_libre.Models
         /// Código SAP de ausencia (2380, 1331, 1100, 2310, 2381, 2396, 2394, 2123, 1315)
         /// </summary>
         [Required]
-        [MaxLength(10)]
         public int ClAbPre { get; set; }  // Cambiar de string a int
 
         /// <summary>
         /// Descripción de la clase de absentismo
         /// </summary>
         [MaxLength(200)]
-        public string ClaseAbsentismo { get; set; } = string.Empty;
+        public string? ClaseAbsentismo { get; set; } = string.Empty;
 
         /// <summary>
         /// Número de días del permiso/incapacidad
         /// </summary>
-        public int Dias { get; set; }
+        public double? Dias { get; set; }
 
         /// <summary>
         /// Días naturales
         /// </summary>
-        public int DiaNat { get; set; }
+        public double? DiaNat { get; set; }
 
         /// <summary>
         /// Observaciones adicionales
@@ -86,7 +85,7 @@ namespace tiempo_libre.Models
         /// Estado: Aprobado, Pendiente, Rechazado
         /// </summary>
         [MaxLength(20)]
-        public string EstadoSolicitud { get; set; } = "Aprobado";
+        public string? EstadoSolicitud { get; set; } = "Aprobado";
 
         /// <summary>
         /// ID del delegado sindical que solicitó (solo para solicitudes)

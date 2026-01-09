@@ -1,4 +1,4 @@
-using System;
+ï»¿using System;
 using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
@@ -63,7 +63,7 @@ namespace tiempo_libre.Controllers
 
                 List<WeeklyRoleEntryDto> semana = new List<WeeklyRoleEntryDto>();
 
-                // Crear un diccionario con los turnos reales para facilitar la búsqueda
+                // Crear un diccionario con los turnos reales para facilitar la bÃºsqueda
                 var turnosReales = new Dictionary<string, Dictionary<int, string>>();
 
                 if (calendarioResponse.Success && calendarioResponse.Data != null)
@@ -100,8 +100,10 @@ namespace tiempo_libre.Controllers
 
                 var permisosIncapacidades = await _db.PermisosEIncapacidadesSAP
                     .Where(p => empleadosNominas.Contains(p.Nomina) &&
-                                p.Hasta >= DateOnly.FromDateTime(inicio) &&
-                                p.Desde <= DateOnly.FromDateTime(fin))
+                p.Hasta >= DateOnly.FromDateTime(inicio) &&
+                p.Desde <= DateOnly.FromDateTime(fin) &&
+                // âœ… Solo mostrar: SAP (sin FechaSolicitud) O Aprobadas
+                (p.FechaSolicitud == null || p.EstadoSolicitud == "Aprobada"))
                     .ToListAsync();
 
                 // Crear diccionario de permisos por empleado y fecha
@@ -118,7 +120,7 @@ namespace tiempo_libre.Controllers
                             permisosPorEmpleadoYFecha[fechaStr] = new Dictionary<int, string>();
                         }
 
-                        var claveVisualizacion = MapearClaveVisualizacion(permiso.ClAbPre.ToString(), permiso.ClaseAbsentismo);
+                        var claveVisualizacion = MapearClaveVisualizacion(permiso.ClAbPre.ToString(), permiso.ClaseAbsentismo ?? string.Empty);
 
                         if (!permisosPorEmpleadoYFecha[fechaStr].ContainsKey(permiso.Nomina))
                         {
@@ -129,7 +131,7 @@ namespace tiempo_libre.Controllers
                     }
                 }
 
-                // Para cada empleado y cada día de la semana, asegurar una entrada
+                // Para cada empleado y cada dÃ­a de la semana, asegurar una entrada
                 foreach (var emp in empleados)
                 {
                     for (int i = 0; i < baseCalendar.Count; i++)
@@ -152,7 +154,7 @@ namespace tiempo_libre.Controllers
                         {
                             codigoTurno = turnosReales[fechaStr][emp.Id];
                         }
-                        // PRIORIDAD 3: Usar turno del patrón del grupo
+                        // PRIORIDAD 3: Usar turno del patrÃ³n del grupo
                         else
                         {
                             codigoTurno = dia.Turno ?? string.Empty;
@@ -258,7 +260,7 @@ namespace tiempo_libre.Controllers
             }
         }
 
-        private string MapearClaveVisualizacion(string clAbPre, string claseAbsentismo)
+        private string MapearClaveVisualizacion(string clAbPre, string? claseAbsentismo)
         {
             var mapeo = new Dictionary<string, string>
     {
@@ -288,20 +290,20 @@ namespace tiempo_libre.Controllers
 
         private string ResolverTurno(string? codigoActividad, string rolGrupo, DateOnly fecha)
         {
-            // Códigos de turno específicos
+            // CÃ³digos de turno especÃ­ficos
             if (!string.IsNullOrEmpty(codigoActividad) &&
                 (codigoActividad == "1" || codigoActividad == "2" || codigoActividad == "3" || codigoActividad == "D"))
             {
                 return codigoActividad;
             }
 
-            // MEJORA: Manejo de códigos de vacaciones
+            // MEJORA: Manejo de cÃ³digos de vacaciones
             if (codigoActividad == "V" || codigoActividad == "VA")
             {
                 return "V";
             }
 
-            // Fallback al patrón del grupo
+            // Fallback al patrÃ³n del grupo
             return TurnosHelper.ObtenerTurnoParaFecha(rolGrupo, fecha);
         }
     }

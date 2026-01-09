@@ -300,8 +300,8 @@ namespace tiempo_libre.Services
                     ClAbPre = p.ClAbPre,
                     ClaveVisualizacion = ObtenerClaveVisualizacion(p.ClAbPre, p.ClaseAbsentismo),
                     ClaseAbsentismo = p.ClaseAbsentismo,
-                    Dias = p.Dias,
-                    DiaNat = p.DiaNat,
+                    Dias = p.Dias ?? 0,
+                    DiaNat = p.DiaNat ?? 0,
                     Observaciones = p.Observaciones,
                     EsRegistroManual = p.EsRegistroManual,
                     FechaRegistro = p.FechaRegistro

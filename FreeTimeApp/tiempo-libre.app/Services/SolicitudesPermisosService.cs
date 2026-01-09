@@ -41,24 +41,24 @@ namespace tiempo_libre.Services
         /// Obtiene solicitudes pendientes para un jefe de área
         /// </summary>
         public async Task<ApiResponse<ConsultarSolicitudesResponse>> ObtenerSolicitudesPendientesParaJefeAsync(int jefeId)
-{
-    try
-    {
-        var consultaRequest = new ConsultarSolicitudesRequest
         {
-            Estado = "Pendiente"
-            // El filtro por jefe se hará en la query
-        };
-        
-        return await ConsultarSolicitudesAsync(consultaRequest, jefeId);
-    }
-    catch (Exception ex)
-    {
-        _logger.LogError(ex, "Error al obtener solicitudes pendientes para jefe {JefeId}", jefeId);
-        return new ApiResponse<ConsultarSolicitudesResponse>(
-            false, null, $"Error inesperado: {ex.Message}");
-    }
-}
+            try
+            {
+                var consultaRequest = new ConsultarSolicitudesRequest
+                {
+                    Estado = "Pendiente"
+                    // El filtro por jefe se hará en la query
+                };
+
+                return await ConsultarSolicitudesAsync(consultaRequest, jefeId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al obtener solicitudes pendientes para jefe {JefeId}", jefeId);
+                return new ApiResponse<ConsultarSolicitudesResponse>(
+                    false, null, $"Error inesperado: {ex.Message}");
+            }
+        }
 
         /// <summary>
         /// Obtiene catálogo de permisos permitidos para delegados
@@ -416,71 +416,88 @@ namespace tiempo_libre.Services
         /// Aprueba o rechaza una solicitud
         /// </summary>
         public async Task<ApiResponse<object>> ResponderSolicitudAsync(
-    ResponderSolicitudPermisoRequest request,
-    int jefeAreaId)
+            ResponderSolicitudPermisoRequest request,
+            int jefeAreaId)
         {
             using var transaction = await _db.Database.BeginTransactionAsync();
 
             try
             {
-                var solicitud = await _db.PermisosEIncapacidadesSAP
-                    .Where(p => p.EstadoSolicitud != null && p.Id == request.SolicitudId)
+                // ✅ Consulta solo para validar (SIN actualizar)
+                var solicitudValidacion = await _db.PermisosEIncapacidadesSAP
+                    .AsNoTracking()
+                    .Where(p => p.Id == request.SolicitudId && p.FechaSolicitud != null)
+                    .Select(p => new
+                    {
+                        p.Id,
+                        p.Nomina,
+                        p.Nombre,
+                        p.ClAbPre,
+                        p.EstadoSolicitud,
+                        p.DelegadoSolicitanteId,
+                        p.JefeAprobadorId
+                    })
                     .FirstOrDefaultAsync();
 
-
-                if (solicitud.EstadoSolicitud != "Pendiente")
+                if (solicitudValidacion == null)
                 {
-                    return new ApiResponse<object>(false, null,
-                        $"La solicitud ya fue {solicitud.EstadoSolicitud.ToLower()}");
+                    return new ApiResponse<object>(false, null, "Solicitud no encontrada");
                 }
 
-                //if (solicitud.Estado != "Pendiente")
-                //{
-                //    return new ApiResponse<object>(false, null,
-                //        $"La solicitud ya fue {solicitud.Estado.ToLower()}");
-                //}
+                if (solicitudValidacion.EstadoSolicitud != "Pendiente")
+                {
+                    return new ApiResponse<object>(false, null,
+                        $"La solicitud ya fue {solicitudValidacion.EstadoSolicitud.ToLower()}");
+                }
 
-                if (solicitud.JefeAprobadorId != jefeAreaId)
+                if (solicitudValidacion.JefeAprobadorId != jefeAreaId)
                 {
                     return new ApiResponse<object>(false, null,
                         "No tiene permisos para responder esta solicitud");
                 }
 
+                // ✅ Ahora SÍ actualizar el registro completo
+                var registroActualizar = await _db.PermisosEIncapacidadesSAP
+                    .FirstOrDefaultAsync(p => p.Id == request.SolicitudId);
+
+                if (registroActualizar == null)
+                {
+                    return new ApiResponse<object>(false, null, "Error al actualizar solicitud");
+                }
+
                 if (request.Aprobar)
                 {
-                    solicitud.EstadoSolicitud = "Aprobada";
-                    solicitud.FechaRespuesta = DateTime.Now;
-                    // ✅ Ya no necesitas crear otro registro, este mismo se aprueba
+                    registroActualizar.EstadoSolicitud = "Aprobada";
+                    registroActualizar.FechaRespuesta = DateTime.Now;
                 }
                 else
                 {
-                    solicitud.EstadoSolicitud = "Rechazada";
-                    solicitud.MotivoRechazo = request.MotivoRechazo;
-                    solicitud.FechaRespuesta = DateTime.Now;
+                    registroActualizar.EstadoSolicitud = "Rechazada";
+                    registroActualizar.MotivoRechazo = request.MotivoRechazo;
+                    registroActualizar.FechaRespuesta = DateTime.Now;
                 }
 
-                solicitud.FechaRespuesta = DateTime.Now;
                 await _db.SaveChangesAsync();
 
                 // Notificar al delegado
                 var jefeArea = await _db.Users.FindAsync(jefeAreaId);
                 await _notificacionesService.CrearNotificacionAsync(
                     Models.Enums.TiposDeNotificacionEnum.RespuestaSolicitud,
-                    $"Solicitud de permiso {solicitud.EstadoSolicitud.ToLower()}",
-                    $"La solicitud de permiso para {solicitud.Nombre} ha sido {solicitud.EstadoSolicitud.ToLower()}" +
+                    $"Solicitud de permiso {registroActualizar.EstadoSolicitud.ToLower()}",
+                    $"La solicitud de permiso para {solicitudValidacion.Nombre} ha sido {registroActualizar.EstadoSolicitud.ToLower()}" +
                     (request.Aprobar ? "." : $". Motivo: {request.MotivoRechazo}"),
                     jefeArea?.FullName ?? "Jefe de Área",
-                    solicitud.DelegadoSolicitanteId ?? 0,
+                    solicitudValidacion.DelegadoSolicitanteId ?? 0,
                     jefeAreaId,
-                    null, // AreaId no existe en PermisosEIncapacidadesSAP
-                    null, // GrupoId no existe en PermisosEIncapacidadesSAP
+                    null,
+                    null,
                     "SolicitudPermiso",
-                    solicitud.Id,
+                    solicitudValidacion.Id,
                     new
                     {
-                        SolicitudId = solicitud.Id,
-                        Estado = solicitud.EstadoSolicitud,
-                        MotivoRechazo = solicitud.MotivoRechazo
+                        SolicitudId = solicitudValidacion.Id,
+                        Estado = registroActualizar.EstadoSolicitud,
+                        MotivoRechazo = registroActualizar.MotivoRechazo
                     }
                 );
 
@@ -488,10 +505,10 @@ namespace tiempo_libre.Services
 
                 _logger.LogInformation(
                     "Solicitud {SolicitudId} {Estado} por jefe {JefeId}",
-                    solicitud.Id, solicitud.EstadoSolicitud, jefeAreaId);
-                //await _db.SaveChangesAsync();
+                    solicitudValidacion.Id, registroActualizar.EstadoSolicitud, jefeAreaId);
+
                 return new ApiResponse<object>(true, null,
-                    $"Solicitud {solicitud.EstadoSolicitud.ToLower()} exitosamente");
+                    $"Solicitud {registroActualizar.EstadoSolicitud.ToLower()} exitosamente");
             }
             catch (Exception ex)
             {

@@ -556,7 +556,26 @@ const WeeklyRoles = () => {
                                                             ? "bg-blue-100 text-blue-700"
                                                             : shift === "V"
                                                                 ? "bg-purple-100 text-purple-700"
-                                                                : "bg-slate-100 text-slate-600";
+                                                                : shift === "P"
+                                                                    ? "bg-green-100 text-green-700"
+                                                                    : shift === "E"
+                                                                        ? "bg-red-100 text-red-700"
+                                                                        : shift === "A"
+                                                                            ? "bg-orange-100 text-orange-700"
+                                                                            : shift === "M"
+                                                                                ? "bg-pink-100 text-pink-700"
+                                                                                : shift === "G"
+                                                                                    ? "bg-amber-100 text-amber-700"
+                                                                                    : shift === "R"
+                                                                                        ? "bg-rose-100 text-rose-700"
+                                                                                        : shift === "S"
+                                                                                            ? "bg-slate-100 text-slate-700"
+                                                                                            : shift === "O"
+                                                                                                ? "bg-cyan-100 text-cyan-700"
+                                                                                                : shift === "H"
+                                                                                                    ? "bg-indigo-100 text-indigo-700"
+                                                                                                    : "bg-slate-100 text-slate-600";
+
                                         return (
                                             <td key={idx} className="px-3 py-2 text-center">
                                                 <span
@@ -574,8 +593,66 @@ const WeeklyRoles = () => {
                 </table>
             </div>
 
-            <div className="mt-4 text-xs text-gray-500">
-                Leyenda: D = Descanso, 1 = Mañana, 2 = Tarde, 3 = Noche, V = Vacaciones.
+            <div className="mt-6 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                <h3 className="text-sm font-semibold text-gray-700 mb-3">Leyenda de códigos:</h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 text-xs">
+                    <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center justify-center rounded-full px-3 py-1 bg-gray-100 text-gray-700 font-semibold">D</span>
+                        <span className="text-gray-600">Descanso</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center justify-center rounded-full px-3 py-1 bg-emerald-100 text-emerald-700 font-semibold">1</span>
+                        <span className="text-gray-600">Turno Mañana</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center justify-center rounded-full px-3 py-1 bg-yellow-100 text-yellow-700 font-semibold">2</span>
+                        <span className="text-gray-600">Turno Tarde</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center justify-center rounded-full px-3 py-1 bg-blue-100 text-blue-700 font-semibold">3</span>
+                        <span className="text-gray-600">Turno Noche</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center justify-center rounded-full px-3 py-1 bg-purple-100 text-purple-700 font-semibold">V</span>
+                        <span className="text-gray-600">Vacaciones</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center justify-center rounded-full px-3 py-1 bg-green-100 text-green-700 font-semibold">P</span>
+                        <span className="text-gray-600">Permiso con Goce</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center justify-center rounded-full px-3 py-1 bg-red-100 text-red-700 font-semibold">E</span>
+                        <span className="text-gray-600">Inc. Enfermedad</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center justify-center rounded-full px-3 py-1 bg-orange-100 text-orange-700 font-semibold">A</span>
+                        <span className="text-gray-600">Inc. Accidente Trabajo</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center justify-center rounded-full px-3 py-1 bg-pink-100 text-pink-700 font-semibold">M</span>
+                        <span className="text-gray-600">Inc. Maternidad</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center justify-center rounded-full px-3 py-1 bg-amber-100 text-amber-700 font-semibold">G</span>
+                        <span className="text-gray-600">Permiso sin Goce</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center justify-center rounded-full px-3 py-1 bg-rose-100 text-rose-700 font-semibold">R</span>
+                        <span className="text-gray-600">Inc. Riesgo Trabajo</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center justify-center rounded-full px-3 py-1 bg-slate-100 text-slate-700 font-semibold">S</span>
+                        <span className="text-gray-600">Suspensión</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center justify-center rounded-full px-3 py-1 bg-cyan-100 text-cyan-700 font-semibold">O</span>
+                        <span className="text-gray-600">Permiso Paternidad</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center justify-center rounded-full px-3 py-1 bg-indigo-100 text-indigo-700 font-semibold">H</span>
+                        <span className="text-gray-600">Perm. sin Goce (Alt)</span>
+                    </div>
+                </div>
             </div>
         </div>
     );

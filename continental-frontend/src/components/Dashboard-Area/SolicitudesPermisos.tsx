@@ -1,16 +1,20 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
+import { Link } from 'react-router-dom'
 import { CheckCircle, XCircle, Clock, Eye } from 'lucide-react';
 import { solicitudesPermisosService, type SolicitudPermisoDto } from '@/services/solicitudesPermisosService';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import ModalRechazoPermiso from './ModalRechazoPermiso'
 
 export const SolicitudesPermisos = () => {
     const [solicitudes, setSolicitudes] = useState<SolicitudPermisoDto[]>([]);
     const [loading, setLoading] = useState(true);
     const [filtroEstado, setFiltroEstado] = useState<string>('Pendiente');
     const [processingId, setProcessingId] = useState<number | null>(null);
+    const [showRejectModal, setShowRejectModal] = useState(false)
+    const [selectedSolicitudForReject, setSelectedSolicitudForReject] = useState<SolicitudPermisoDto | null>(null)
 
     const cargarSolicitudes = async () => {
         setLoading(true);
@@ -48,25 +52,40 @@ export const SolicitudesPermisos = () => {
         }
     };
 
-    const handleRechazar = async (solicitudId: number) => {
-        const motivo = prompt('Ingrese el motivo del rechazo:');
-        if (!motivo) return;
+    const handleRechazar = (solicitudId: number) => {
+        const solicitud = solicitudes.find(s => s.id === solicitudId)
+        if (solicitud) {
+            setSelectedSolicitudForReject(solicitud)
+            setShowRejectModal(true)
+        }
+    }
 
-        setProcessingId(solicitudId);
+    const handleRejectConfirm = async (motivo: string) => {
+        if (!selectedSolicitudForReject) return
+
+        setProcessingId(selectedSolicitudForReject.id)
+        setShowRejectModal(false)
+
         try {
             await solicitudesPermisosService.responderSolicitud({
-                solicitudId,
+                solicitudId: selectedSolicitudForReject.id,
                 aprobar: false,
                 motivoRechazo: motivo
-            });
-            toast.success('Solicitud rechazada');
-            cargarSolicitudes();
+            })
+            toast.success('Solicitud rechazada')
+            cargarSolicitudes()
         } catch (error) {
-            toast.error('Error al rechazar solicitud');
+            toast.error('Error al rechazar solicitud')
         } finally {
-            setProcessingId(null);
+            setProcessingId(null)
+            setSelectedSolicitudForReject(null)
         }
-    };
+    }
+
+    const handleRejectCancel = () => {
+        setShowRejectModal(false)
+        setSelectedSolicitudForReject(null)
+    }
 
     const getEstadoBadge = (estado: string) => {
         const styles = {
@@ -186,12 +205,28 @@ export const SolicitudesPermisos = () => {
                                                 <Eye className="w-3 h-3" />
                                             </Button>
                                         )}
+                                        <Link
+                                            to={`/area/solicitudes-permisos/${solicitud.id}`}
+                                            className="inline-flex h-7 w-full items-center justify-center mt-2
+                                            rounded-lg bg-[var(--color-continental-yellow,#FDB41C)]
+                                            px-3 text-sm font-semibold text-black hover:opacity-90"
+                                        >
+                                            Ver detalle
+                                        </Link>
                                     </td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
                 </div>
+            )}
+            {selectedSolicitudForReject && (
+                <ModalRechazoPermiso
+                    show={showRejectModal}
+                    nombreEmpleado={selectedSolicitudForReject.nombreEmpleado}
+                    onClose={handleRejectCancel}
+                    onConfirm={handleRejectConfirm}
+                />
             )}
         </div>
     );

@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using tiempo_libre.Services;
 using tiempo_libre.DTOs;
 using tiempo_libre.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace tiempo_libre.Controllers
 {
@@ -192,6 +193,78 @@ namespace tiempo_libre.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error al obtener solicitudes pendientes");
+                return StatusCode(500, new ApiResponse<object>(false, null, $"Error inesperado: {ex.Message}"));
+            }
+        }
+
+
+        /// <summary>
+        /// Obtiene una solicitud específica por ID
+        /// </summary>
+        [HttpGet("{id}")]
+        [Authorize(Roles = "Jefe De Area,SuperUsuario")]
+        public async Task<IActionResult> ObtenerSolicitudPorId(int id)
+        {
+            try
+            {
+                var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var userId))
+                {
+                    return Unauthorized(new ApiResponse<object>(false, null, "Usuario no identificado"));
+                }
+
+                var solicitud = await _db.PermisosEIncapacidadesSAP
+                    .Where(p => p.Id == id && p.EstadoSolicitud != null)
+                    .FirstOrDefaultAsync();
+
+                if (solicitud == null)
+                {
+                    return NotFound(new ApiResponse<object>(false, null, "Solicitud no encontrada"));
+                }
+
+                // Obtener nombres de delegado y jefe
+                var delegadoNombre = solicitud.DelegadoSolicitanteId.HasValue
+                    ? await _db.Users
+                        .Where(u => u.Id == solicitud.DelegadoSolicitanteId.Value)
+                        .Select(u => u.FullName)
+                        .FirstOrDefaultAsync()
+                    : null;
+
+                var jefeNombre = solicitud.JefeAprobadorId.HasValue
+                    ? await _db.Users
+                        .Where(u => u.Id == solicitud.JefeAprobadorId.Value)
+                        .Select(u => u.FullName)
+                        .FirstOrDefaultAsync()
+                    : null;
+
+                var catalogoCompleto = _solicitudesService.ObtenerCatalogoParaDelegado();
+                var tipoPermiso = catalogoCompleto.TiposPermisosPermitidos
+                    .FirstOrDefault(t => t.ClAbPre == solicitud.ClAbPre.ToString());
+
+                var dto = new SolicitudPermisoDto
+                {
+                    Id = solicitud.Id,
+                    NominaEmpleado = solicitud.Nomina,
+                    NombreEmpleado = solicitud.Nombre ?? string.Empty,
+                    ClAbPre = solicitud.ClAbPre.ToString(),
+                    ClaveVisualizacion = tipoPermiso?.ClaveVisualizacion ?? solicitud.ClAbPre.ToString(),
+                    DescripcionPermiso = tipoPermiso?.Concepto ?? solicitud.ClaseAbsentismo,
+                    FechaInicio = solicitud.Desde.ToString("yyyy-MM-dd"),
+                    FechaFin = solicitud.Hasta.ToString("yyyy-MM-dd"),
+                    Observaciones = solicitud.Observaciones,
+                    Estado = solicitud.EstadoSolicitud ?? "Pendiente",
+                    MotivoRechazo = solicitud.MotivoRechazo,
+                    FechaSolicitud = solicitud.FechaSolicitud ?? DateTime.Now,
+                    FechaRespuesta = solicitud.FechaRespuesta,
+                    DelegadoNombre = delegadoNombre ?? "N/A",
+                    JefeAreaNombre = jefeNombre
+                };
+
+                return Ok(new ApiResponse<SolicitudPermisoDto>(true, dto, null));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al obtener solicitud {Id}", id);
                 return StatusCode(500, new ApiResponse<object>(false, null, $"Error inesperado: {ex.Message}"));
             }
         }

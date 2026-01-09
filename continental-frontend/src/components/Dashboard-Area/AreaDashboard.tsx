@@ -40,6 +40,7 @@ import { Calendar, File, FileChartColumn, Users, CalendarClock } from "lucide-re
 import CalendarComponent from "./CalendarComponent";
 import SolicitudesComponent from "./SolicitudesComponent";
 import SolicitudDetallePage from "./SolicitudDetallePage";
+import SolicitudPermisoDetalle from "./SolicitudPermisoDetalle";
 import { Plantilla } from "./Plantilla";
 import { Reportes } from "./Reportes";
 import { DetallesEmpleado } from "../Empleado/DetallesEmpleado";
@@ -112,6 +113,7 @@ const AreaDashboard = (): JSX.Element => {
                         <>
                             <Route path="solicitudes" element={<SolicitudesComponent />} />
                             <Route path="solicitudes/:id" element={<SolicitudDetallePage />} />
+                            <Route path="/area/solicitudes-permisos/:id" element={<SolicitudPermisoDetalle />} />
                         </>
                     )}
 
