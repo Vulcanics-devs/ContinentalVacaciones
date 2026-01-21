@@ -512,7 +512,7 @@ export const EditModal = ({
                 empleadoId: employeeId,
                 vacacionOriginalId: selectedVacation.id,
                 fechaNueva: nuevaFecha,
-                motivo: motivo.trim() || "Solicitud de cambio de vacaciÃ³n"
+                motivo: motivo.trim() || "Solicitud de cambio de vacación"
             };
 
             await ReprogramacionService.solicitarReprogramacion(request);
@@ -773,18 +773,27 @@ export const RequestModal = ({
                                         disabled={loading}
                                     >
                                         <option value="">Selecciona un festivo trabajado</option>
-                                        {festivosDisponibles.map((festivo) => (
-                                            <option key={festivo.id} value={festivo.id}>
-                                                {format(parseISO(festivo.festivoTrabajado), "d 'de' MMMM, yyyy", { locale: es })}
-                                                ({festivo.diaSemana})
-                                            </option>
-                                        ))}
+                                                {festivosDisponibles.map((festivo) => (
+                                                    <option key={festivo.id} value={festivo.id}>
+                                                        {/* ✅ CAMBIAR de parseISO a new Date directo */}
+                                                        {new Date(festivo.festivoTrabajado + 'T00:00:00').toLocaleDateString('es-MX', {
+                                                            day: 'numeric',
+                                                            month: 'long',
+                                                            year: 'numeric'
+                                                        })}
+                                                        {' - '}
+                                                        {festivo.nombreEmpleado} {/* Nombre del festivo */}
+                                                        {' ('}
+                                                        {festivo.diaSemana}
+                                                        {')'}
+                                                    </option>
+                                                ))}
                                     </select>
                                 </div>
 
                                 <div className="mb-4 flex flex-col gap-2">
                                     <label className="block text-sm font-medium text-gray-700">
-                                        Nueva Fecha de VacaciÃ³n
+                                        Nueva Fecha de Vacación
                                     </label>
                                     <Input
                                         type="date"

@@ -59,7 +59,7 @@ export function TablaFestivosTrabajados() {
                 estado: estadoFilter === 'Todas' ? undefined : estadoFilter,
                 areaId: selectedAreaId
             })
-            setSolicitudes(response)
+            setSolicitudes(response.solicitudes || [])
         } catch (error) {
             console.error('Error fetching solicitudes festivos:', error)
             toast.error('Error al cargar solicitudes de festivos trabajados')

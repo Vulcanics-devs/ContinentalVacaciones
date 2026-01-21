@@ -58,7 +58,7 @@ namespace tiempo_libre.Models
         public virtual User Empleado { get; set; } = null!;
 
         [ForeignKey("FestivoTrabajadoOriginalId")]
-        public virtual DiasFestivosTrabajadosOriginalTable FestivoTrabajadoOriginal { get; set; } = null!;
+        public virtual DiasInhabiles? DiaInhabilOriginal { get; set; }
 
         [ForeignKey("SolicitadoPorId")]
         public virtual User SolicitadoPor { get; set; } = null!;

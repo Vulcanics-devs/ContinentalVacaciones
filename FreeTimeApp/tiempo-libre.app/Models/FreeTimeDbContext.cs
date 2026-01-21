@@ -1099,7 +1099,7 @@ public partial class FreeTimeDbContext : DbContext
                 .HasForeignKey(e => e.EmpleadoId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            entity.HasOne(e => e.FestivoTrabajadoOriginal)
+            entity.HasOne(e => e.DiaInhabilOriginal)
                 .WithMany()
                 .HasForeignKey(e => e.FestivoTrabajadoOriginalId)
                 .OnDelete(DeleteBehavior.Restrict);

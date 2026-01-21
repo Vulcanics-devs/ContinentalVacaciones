@@ -35,23 +35,29 @@ namespace tiempo_libre.Services
         /// Similar a reprogramación: auto-aprueba si no excede porcentaje, sino crea solicitud pendiente
         /// </summary>
         public async Task<ApiResponse<SolicitudFestivoTrabajadoResponse>> SolicitarIntercambioFestivoAsync(
-            SolicitudFestivoTrabajadoRequest request, int usuarioSolicitanteId)
+    SolicitudFestivoTrabajadoRequest request, int usuarioSolicitanteId)
         {
             using var transaction = await _db.Database.BeginTransactionAsync();
 
             try
             {
-                // 1. Verificar que el festivo trabajado existe y pertenece al empleado
-                var festivoTrabajado = await _db.DiasFestivosTrabajadosOriginalTable
-                    .FirstOrDefaultAsync(f => f.Id == request.FestivoTrabajadoId);
+                // ✅ CAMBIO: Verificar que el día inhábil existe en lugar de festivo trabajado
+                var diaInhabil = await _db.DiasInhabiles
+                    .FirstOrDefaultAsync(d => d.Id == request.FestivoTrabajadoId);
 
-                if (festivoTrabajado == null)
+                if (diaInhabil == null)
                 {
                     return new ApiResponse<SolicitudFestivoTrabajadoResponse>(false, null,
-                        "El festivo trabajado no existe");
+                        "El día festivo no existe");
                 }
 
-                // 2. Obtener el empleado y verificar que coincide con el festivo
+                if (diaInhabil.TipoActividadDelDia != TipoActividadDelDiaEnum.InhabilPorLey)
+                {
+                    return new ApiResponse<SolicitudFestivoTrabajadoResponse>(false, null,
+                        "Solo se pueden intercambiar días inhábiles por ley (festivos oficiales)");
+                }
+
+                // Obtener el empleado
                 var empleado = await _db.Users
                     .Include(u => u.Area)
                     .Include(u => u.Grupo)
@@ -63,38 +69,18 @@ namespace tiempo_libre.Services
                         "Empleado no encontrado o inactivo");
                 }
 
-                // Verificar que el empleado coincida con el festivo trabajado (por nómina)
-                if (empleado.Nomina != festivoTrabajado.Nomina)
-                {
-                    return new ApiResponse<SolicitudFestivoTrabajadoResponse>(false, null,
-                        $"El festivo trabajado no pertenece al empleado especificado");
-                }
-
-                // 3. Verificar que el festivo no haya sido ya intercambiado o tenga solicitud pendiente
-                var yaIntercambiado = await _db.VacacionesProgramadas
-                    .AnyAsync(v => v.EmpleadoId == request.EmpleadoId &&
-                                  v.TipoVacacion == "FestivoTrabajado" &&
-                                  v.Observaciones != null &&
-                                  v.Observaciones.Contains($"FestivoId:{request.FestivoTrabajadoId}"));
+                var yaIntercambiado = await _db.SolicitudesFestivosTrabajados
+                .AnyAsync(s => s.EmpleadoId == request.EmpleadoId &&
+                  s.FestivoOriginal == diaInhabil.Fecha &&
+                  (s.EstadoSolicitud == "Pendiente" || s.EstadoSolicitud == "Aprobada"));
 
                 if (yaIntercambiado)
                 {
                     return new ApiResponse<SolicitudFestivoTrabajadoResponse>(false, null,
-                        "Este festivo trabajado ya fue intercambiado anteriormente");
+                        "Ya existe una solicitud para este día festivo");
                 }
 
-                // Verificar si ya hay una solicitud pendiente para este festivo
-                var solicitudExistente = await _db.SolicitudesFestivosTrabajados
-                    .AnyAsync(s => s.FestivoTrabajadoOriginalId == request.FestivoTrabajadoId &&
-                                  s.EstadoSolicitud == "Pendiente");
-
-                if (solicitudExistente)
-                {
-                    return new ApiResponse<SolicitudFestivoTrabajadoResponse>(false, null,
-                        "Ya existe una solicitud pendiente para este festivo trabajado");
-                }
-
-                // 4. Validar que la fecha nueva no sea un día inhábil
+                // Validar que la fecha nueva no sea un día inhábil
                 var esDiaInhabil = await _db.DiasInhabiles
                     .AnyAsync(d => d.Fecha == request.FechaNueva);
 
@@ -104,7 +90,7 @@ namespace tiempo_libre.Services
                         "No se puede programar una vacación en un día inhábil o festivo");
                 }
 
-                // 5. Validar que no haya conflicto con otras vacaciones del empleado
+                // Validar conflictos
                 var conflictoVacaciones = await _db.VacacionesProgramadas
                     .AnyAsync(v => v.EmpleadoId == request.EmpleadoId &&
                                   v.FechaVacacion == request.FechaNueva &&
@@ -116,7 +102,7 @@ namespace tiempo_libre.Services
                         $"Ya existe una vacación programada para el {request.FechaNueva:dd/MM/yyyy}");
                 }
 
-                // 6. Calcular porcentaje de ausencia para determinar si requiere aprobación
+                // Calcular porcentaje
                 decimal porcentaje = 0;
                 var requiereAprobacion = false;
                 var configuracion = await _db.ConfiguracionVacaciones
@@ -127,33 +113,26 @@ namespace tiempo_libre.Services
 
                 if (empleado.GrupoId.HasValue)
                 {
-                    var grupo = await _db.Grupos
-                        .Include(g => g.Area)
-                        .FirstOrDefaultAsync(g => g.GrupoId == empleado.GrupoId.Value);
+                    var totalEmpleados = await _db.Users
+                        .CountAsync(u => u.GrupoId == empleado.GrupoId.Value &&
+                                       u.Status == UserStatus.Activo);
 
-                    if (grupo != null && grupo.Area != null)
+                    var vacacionesEnFecha = await _db.VacacionesProgramadas
+                        .CountAsync(v => v.Empleado.GrupoId == empleado.GrupoId.Value &&
+                                       v.FechaVacacion == request.FechaNueva &&
+                                       v.EstadoVacacion == "Activa");
+
+                    var empleadosAusentes = vacacionesEnFecha + 1;
+
+                    if (totalEmpleados > 0)
                     {
-                        var totalEmpleados = await _db.Users
-                            .CountAsync(u => u.GrupoId == empleado.GrupoId.Value &&
-                                           u.Status == UserStatus.Activo);
-
-                        var vacacionesEnFecha = await _db.VacacionesProgramadas
-                            .CountAsync(v => v.Empleado.GrupoId == empleado.GrupoId.Value &&
-                                           v.FechaVacacion == request.FechaNueva &&
-                                           v.EstadoVacacion == "Activa");
-
-                        var empleadosAusentes = vacacionesEnFecha + 1; // +1 por la nueva solicitud
-
-                        if (totalEmpleados > 0)
-                        {
-                            porcentaje = ((decimal)empleadosAusentes / totalEmpleados) * 100;
-                        }
+                        porcentaje = ((decimal)empleadosAusentes / totalEmpleados) * 100;
                     }
 
-                    requiereAprobacion = porcentaje > porcentajeMaximo;
+                    requiereAprobacion = true;
                 }
 
-                // 7. Obtener el jefe de área
+                // Obtener jefe de área
                 User? jefeArea = null;
                 if (empleado.AreaId.HasValue)
                 {
@@ -163,11 +142,11 @@ namespace tiempo_libre.Services
                                                                 r.Name == "Jefe De Area"));
                 }
 
-                // 8. Crear la solicitud
+                // ✅ CAMBIO: Crear solicitud con referencia al día inhábil
                 var solicitud = new SolicitudesFestivosTrabajados
                 {
                     EmpleadoId = request.EmpleadoId,
-                    FestivoTrabajadoOriginalId = request.FestivoTrabajadoId,
+                    FestivoTrabajadoOriginalId = request.FestivoTrabajadoId, // ID de DiasInhabiles
                     FechaNuevaSolicitada = request.FechaNueva,
                     Motivo = request.Motivo,
                     EstadoSolicitud = requiereAprobacion ? "Pendiente" : "Aprobada",
@@ -175,58 +154,55 @@ namespace tiempo_libre.Services
                     FechaSolicitud = DateTime.Now,
                     SolicitadoPorId = usuarioSolicitanteId,
                     JefeAreaId = jefeArea?.Id,
-                    FestivoOriginal = festivoTrabajado.FestivoTrabajado,
-                    Nomina = festivoTrabajado.Nomina
+                    FestivoOriginal = diaInhabil.Fecha, // ✅ Guardar la fecha del festivo
+                    Nomina = empleado.Nomina ?? 0
                 };
 
-                // Si no requiere aprobación, se aprueba automáticamente
-                if (!requiereAprobacion)
-                {
-                    solicitud.FechaRespuesta = DateTime.Now;
-                    solicitud.AprobadoPorId = usuarioSolicitanteId; // Auto-aprobado
-                }
+                // Auto-aprobar si no requiere aprobación
+                //if (!requiereAprobacion)
+                //{
+                //    solicitud.FechaRespuesta = DateTime.Now;
+                //    solicitud.AprobadoPorId = usuarioSolicitanteId;
+                //}
 
                 _db.SolicitudesFestivosTrabajados.Add(solicitud);
                 await _db.SaveChangesAsync();
 
-                // 9. Si se auto-aprobó, crear la vacación
+                // Crear vacación si se auto-aprobó
                 int? vacacionId = null;
-                if (!requiereAprobacion)
+                //if (!requiereAprobacion)
+                //{
+                //    var nuevaVacacion = new VacacionesProgramadas
+                //    {
+                //        EmpleadoId = request.EmpleadoId,
+                //        FechaVacacion = request.FechaNueva,
+                //        TipoVacacion = "FestivoTrabajado",
+                //        OrigenAsignacion = "Manual",
+                //        EstadoVacacion = "Activa",
+                //        PeriodoProgramacion = "IntercambioFestivo",
+                //        FechaProgramacion = DateTime.Now,
+                //        PuedeSerIntercambiada = false,
+                //        CreatedAt = DateTime.Now,
+                //        CreatedBy = usuarioSolicitanteId,
+                //        Observaciones = $"Intercambio de festivo {diaInhabil.Detalles} del {diaInhabil.Fecha:dd/MM/yyyy}. " +
+                //                       $"DiaInhabilId:{request.FestivoTrabajadoId}. SolicitudId:{solicitud.Id}. Motivo: {request.Motivo}"
+                //    };
+
+                //    _db.VacacionesProgramadas.Add(nuevaVacacion);
+                //    await _db.SaveChangesAsync();
+
+                //    solicitud.VacacionCreadaId = nuevaVacacion.Id;
+                //    vacacionId = nuevaVacacion.Id;
+                //    await _db.SaveChangesAsync();
+
+                //    await _notificacionesService.NotificarIntercambioFestivoAsync(
+                //        empleado.Id,
+                //        diaInhabil.Fecha,
+                //        request.FechaNueva,
+                //        usuarioSolicitanteId);
+                //}
+                //else
                 {
-                    var nuevaVacacion = new VacacionesProgramadas
-                    {
-                        EmpleadoId = request.EmpleadoId,
-                        FechaVacacion = request.FechaNueva,
-                        TipoVacacion = "FestivoTrabajado",
-                        OrigenAsignacion = "Manual",
-                        EstadoVacacion = "Activa",
-                        PeriodoProgramacion = "IntercambioFestivo",
-                        FechaProgramacion = DateTime.Now,
-                        PuedeSerIntercambiada = false,
-                        CreatedAt = DateTime.Now,
-                        CreatedBy = usuarioSolicitanteId,
-                        Observaciones = $"Intercambio de festivo trabajado del {festivoTrabajado.FestivoTrabajado:dd/MM/yyyy}. " +
-                                       $"FestivoId:{request.FestivoTrabajadoId}. SolicitudId:{solicitud.Id}. Motivo: {request.Motivo}"
-                    };
-
-                    _db.VacacionesProgramadas.Add(nuevaVacacion);
-                    await _db.SaveChangesAsync();
-
-                    // Actualizar la solicitud con el ID de la vacación creada
-                    solicitud.VacacionCreadaId = nuevaVacacion.Id;
-                    vacacionId = nuevaVacacion.Id;
-                    await _db.SaveChangesAsync();
-
-                    // Notificar al empleado sobre la aprobación automática
-                    await _notificacionesService.NotificarIntercambioFestivoAsync(
-                        empleado.Id,
-                        festivoTrabajado.FestivoTrabajado,
-                        request.FechaNueva,
-                        usuarioSolicitanteId);
-                }
-                else
-                {
-                    // Notificar al jefe de área sobre la solicitud pendiente
                     if (jefeArea != null)
                     {
                         await _notificacionesService.NotificarSolicitudFestivoTrabajadoAsync(
@@ -240,7 +216,6 @@ namespace tiempo_libre.Services
                     }
                 }
 
-                // 10. Confirmar la transacción
                 await transaction.CommitAsync();
 
                 var response = new SolicitudFestivoTrabajadoResponse
@@ -249,7 +224,7 @@ namespace tiempo_libre.Services
                     EmpleadoId = empleado.Id,
                     NombreEmpleado = empleado.FullName,
                     NominaEmpleado = empleado.Nomina?.ToString() ?? empleado.Username,
-                    FestivoOriginal = festivoTrabajado.FestivoTrabajado,
+                    FestivoOriginal = diaInhabil.Fecha,
                     FechaNueva = request.FechaNueva,
                     Motivo = request.Motivo,
                     EstadoSolicitud = solicitud.EstadoSolicitud,
@@ -264,12 +239,6 @@ namespace tiempo_libre.Services
                     NombreJefeArea = jefeArea?.FullName,
                     VacacionId = vacacionId
                 };
-
-                _logger.LogInformation(
-                    "Solicitud de festivo trabajado creada para empleado {EmpleadoId}: {FestivoOriginal} -> {FechaNueva}. " +
-                    "Estado: {Estado}, Porcentaje: {Porcentaje:F2}%",
-                    empleado.Id, festivoTrabajado.FestivoTrabajado, request.FechaNueva,
-                    solicitud.EstadoSolicitud, porcentaje);
 
                 return new ApiResponse<SolicitudFestivoTrabajadoResponse>(true, response, null);
             }
@@ -295,7 +264,7 @@ namespace tiempo_libre.Services
                 // 1. Obtener la solicitud
                 var solicitud = await _db.SolicitudesFestivosTrabajados
                     .Include(s => s.Empleado)
-                    .Include(s => s.FestivoTrabajadoOriginal)
+                    .Include(s => s.DiaInhabilOriginal)
                     .FirstOrDefaultAsync(s => s.Id == request.SolicitudId);
 
                 if (solicitud == null)
@@ -444,7 +413,7 @@ namespace tiempo_libre.Services
                         .ThenInclude(e => e.Area)
                     .Include(s => s.Empleado)
                         .ThenInclude(e => e.Grupo)
-                    .Include(s => s.FestivoTrabajadoOriginal)
+                    .Include(s => s.DiaInhabilOriginal)
                     .Include(s => s.JefeArea)
                     .Include(s => s.AprobadoPor)
                     .AsQueryable();
@@ -534,75 +503,53 @@ namespace tiempo_libre.Services
         /// Consultar festivos trabajados disponibles para un empleado
         /// </summary>
         public async Task<ApiResponse<ListaFestivosTrabajadosResponse>> ConsultarFestivosTrabajadosAsync(
-            ConsultaFestivosTrabajadosRequest request)
+    ConsultaFestivosTrabajadosRequest request)
         {
             try
             {
-                var query = _db.DiasFestivosTrabajadosOriginalTable.AsQueryable();
-
-                // Filtrar por nómina si se especifica
-                if (request.Nomina.HasValue)
-                {
-                    query = query.Where(f => f.Nomina == request.Nomina.Value);
-                }
-
-                // Si se especifica empleadoId, buscar su nómina
-                if (request.EmpleadoId.HasValue)
-                {
-                    var empleado = await _db.Users
-                        .FirstOrDefaultAsync(u => u.Id == request.EmpleadoId.Value);
-
-                    if (empleado?.Nomina != null)
-                    {
-                        query = query.Where(f => f.Nomina == empleado.Nomina.Value);
-                    }
-                    else
-                    {
-                        return new ApiResponse<ListaFestivosTrabajadosResponse>(false, null,
-                            "Empleado no encontrado o sin nómina asignada");
-                    }
-                }
+                // ✅ Obtener días inhábiles en lugar de festivos trabajados
+                var query = _db.DiasInhabiles
+                    .Where(d => d.TipoActividadDelDia == TipoActividadDelDiaEnum.InhabilPorLey)
+                    .AsQueryable();
 
                 // Filtrar por año si se especifica
                 if (request.Anio.HasValue)
                 {
-                    query = query.Where(f => f.FestivoTrabajado.Year == request.Anio.Value);
+                    query = query.Where(d => d.Fecha.Year == request.Anio.Value);
                 }
 
-                var festivos = await query.OrderBy(f => f.FestivoTrabajado).ToListAsync();
+                var diasInhabiles = await query.OrderBy(d => d.Fecha).ToListAsync();
 
-                // Buscar cuáles ya fueron intercambiados o tienen solicitudes
                 var festivosDto = new List<FestivoTrabajadoDto>();
                 var culture = new CultureInfo("es-ES");
 
-                foreach (var festivo in festivos)
+                foreach (var diaInhabil in diasInhabiles)
                 {
-                    // Buscar si este festivo ya fue intercambiado
-                    var vacacionIntercambio = await _db.VacacionesProgramadas
-                        .FirstOrDefaultAsync(v => v.TipoVacacion == "FestivoTrabajado" &&
-                                                 v.Observaciones != null &&
-                                                 v.Observaciones.Contains($"FestivoId:{festivo.Id}"));
+                    // ✅ Verificar si este día inhábil ya fue solicitado por el empleado
+                    var yaSolicitado = false;
 
-                    // Buscar si tiene solicitud pendiente
-                    var solicitudPendiente = await _db.SolicitudesFestivosTrabajados
-                        .AnyAsync(s => s.FestivoTrabajadoOriginalId == festivo.Id &&
-                                      s.EstadoSolicitud == "Pendiente");
-
-                    var yaIntercambiado = vacacionIntercambio != null || solicitudPendiente;
+                    if (request.EmpleadoId.HasValue)
+                    {
+                        yaSolicitado = await _db.SolicitudesFestivosTrabajados
+                            .AnyAsync(s =>
+                                s.EmpleadoId == request.EmpleadoId.Value &&
+                                s.FestivoOriginal == diaInhabil.Fecha &&
+                                (s.EstadoSolicitud == "Pendiente" || s.EstadoSolicitud == "Aprobada"));
+                    }
 
                     var dto = new FestivoTrabajadoDto
                     {
-                        Id = festivo.Id,
-                        Nomina = festivo.Nomina,
-                        NombreEmpleado = festivo.Nombre,
-                        FestivoTrabajado = festivo.FestivoTrabajado,
-                        DiaSemana = festivo.FestivoTrabajado.ToString("dddd", culture),
-                        YaIntercambiado = yaIntercambiado,
-                        VacacionAsignadaId = vacacionIntercambio?.Id,
-                        FechaIntercambio = vacacionIntercambio?.FechaVacacion
+                        Id = diaInhabil.Id,
+                        Nomina = request.Nomina ?? 0,
+                        NombreEmpleado = diaInhabil.Detalles, // Nombre del festivo
+                        FestivoTrabajado = diaInhabil.Fecha.ToString("yyyy-MM-dd"),
+                        DiaSemana = diaInhabil.Fecha.ToString("dddd", culture),
+                        YaIntercambiado = yaSolicitado,
+                        VacacionAsignadaId = null,
+                        FechaIntercambio = null
                     };
 
-                    // Si solo queremos disponibles, filtrar los ya intercambiados
+                    // Si solo queremos disponibles, filtrar los ya solicitados
                     if (!request.SoloDisponibles || !dto.YaIntercambiado)
                     {
                         festivosDto.Add(dto);
@@ -611,7 +558,7 @@ namespace tiempo_libre.Services
 
                 var response = new ListaFestivosTrabajadosResponse
                 {
-                    TotalFestivos = festivos.Count,
+                    TotalFestivos = festivosDto.Count,
                     FestivosDisponibles = festivosDto.Count(f => !f.YaIntercambiado),
                     FestivosIntercambiados = festivosDto.Count(f => f.YaIntercambiado),
                     Festivos = festivosDto
@@ -621,7 +568,7 @@ namespace tiempo_libre.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error al consultar festivos trabajados");
+                _logger.LogError(ex, "Error al consultar festivos trabajados desde DiasInhabiles");
                 return new ApiResponse<ListaFestivosTrabajadosResponse>(false, null,
                     $"Error inesperado: {ex.Message}");
             }
@@ -640,20 +587,27 @@ namespace tiempo_libre.Services
                     FechaNueva = request.FechaNueva
                 };
 
-                // 1. Verificar que el festivo existe
-                var festivo = await _db.DiasFestivosTrabajadosOriginalTable
-                    .FirstOrDefaultAsync(f => f.Id == request.FestivoTrabajadoId);
+                // 1. Verificar que el día inhábil existe (igual que en SolicitarIntercambioFestivoAsync)
+                var diaInhabil = await _db.DiasInhabiles
+                    .FirstOrDefaultAsync(d => d.Id == request.FestivoTrabajadoId);
 
-                if (festivo == null)
+                if (diaInhabil == null)
                 {
                     response.EsValido = false;
-                    response.MotivoInvalidez = "El festivo trabajado no existe";
+                    response.MotivoInvalidez = "El día festivo no existe";
                     return new ApiResponse<ValidarFestivoTrabajadoResponse>(true, response, null);
                 }
 
-                response.FestivoOriginal = festivo.FestivoTrabajado;
+                if (diaInhabil.TipoActividadDelDia != TipoActividadDelDiaEnum.InhabilPorLey)
+                {
+                    response.EsValido = false;
+                    response.MotivoInvalidez = "Solo se pueden intercambiar días inhábiles por ley (festivos oficiales)";
+                    return new ApiResponse<ValidarFestivoTrabajadoResponse>(true, response, null);
+                }
 
-                // 2. Verificar que el empleado existe y coincide con el festivo
+                response.FestivoOriginal = diaInhabil.Fecha;
+
+                // 2. Verificar que el empleado existe
                 var empleado = await _db.Users
                     .FirstOrDefaultAsync(u => u.Id == request.EmpleadoId);
 
@@ -664,37 +618,20 @@ namespace tiempo_libre.Services
                     return new ApiResponse<ValidarFestivoTrabajadoResponse>(true, response, null);
                 }
 
-                response.EmpleadoCoincide = empleado.Nomina == festivo.Nomina;
-                if (!response.EmpleadoCoincide)
-                {
-                    response.EsValido = false;
-                    response.MotivoInvalidez = "El festivo trabajado no pertenece al empleado especificado";
-                    return new ApiResponse<ValidarFestivoTrabajadoResponse>(true, response, null);
-                }
+                response.EmpleadoCoincide = true; // Los días inhábiles son para todos
 
                 // 3. Verificar si ya fue intercambiado o tiene solicitud pendiente
-                var yaIntercambiado = await _db.VacacionesProgramadas
-                    .AnyAsync(v => v.TipoVacacion == "FestivoTrabajado" &&
-                                  v.Observaciones != null &&
-                                  v.Observaciones.Contains($"FestivoId:{request.FestivoTrabajadoId}"));
+                var yaIntercambiado = await _db.SolicitudesFestivosTrabajados
+                    .AnyAsync(s => s.EmpleadoId == request.EmpleadoId &&
+                                  s.FestivoOriginal == diaInhabil.Fecha &&
+                                  (s.EstadoSolicitud == "Pendiente" || s.EstadoSolicitud == "Aprobada"));
 
-                var tieneSolicitudPendiente = await _db.SolicitudesFestivosTrabajados
-                    .AnyAsync(s => s.FestivoTrabajadoOriginalId == request.FestivoTrabajadoId &&
-                                  s.EstadoSolicitud == "Pendiente");
-
-                response.FestivoDisponible = !yaIntercambiado && !tieneSolicitudPendiente;
+                response.FestivoDisponible = !yaIntercambiado;
 
                 if (yaIntercambiado)
                 {
                     response.EsValido = false;
-                    response.MotivoInvalidez = "Este festivo trabajado ya fue intercambiado anteriormente";
-                    return new ApiResponse<ValidarFestivoTrabajadoResponse>(true, response, null);
-                }
-
-                if (tieneSolicitudPendiente)
-                {
-                    response.EsValido = false;
-                    response.MotivoInvalidez = "Este festivo tiene una solicitud pendiente de aprobación";
+                    response.MotivoInvalidez = "Ya existe una solicitud para este día festivo";
                     return new ApiResponse<ValidarFestivoTrabajadoResponse>(true, response, null);
                 }
 

@@ -108,6 +108,17 @@ export interface AprobarFestivoResponse {
   vacacionCreada: boolean
 }
 
+export interface FestivoTrabajadoDto {
+    id: number
+    nomina: number
+    nombreEmpleado: string
+    festivoTrabajado: string
+    diaSemana: string
+    yaIntercambiado: boolean
+    vacacionAsignadaId?: number
+    fechaIntercambio?: string
+}
+
 // ============================================================================
 // SERVICE CLASS
 // ============================================================================

@@ -76,7 +76,7 @@ namespace tiempo_libre.DTOs
         public int Id { get; set; }
         public int Nomina { get; set; }
         public string NombreEmpleado { get; set; } = string.Empty;
-        public DateOnly FestivoTrabajado { get; set; }
+        public string FestivoTrabajado { get; set; } = string.Empty;
         public string DiaSemana { get; set; } = string.Empty;
         public bool YaIntercambiado { get; set; }
         public int? VacacionAsignadaId { get; set; }
