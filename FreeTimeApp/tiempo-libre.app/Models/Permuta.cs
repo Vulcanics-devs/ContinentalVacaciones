@@ -45,5 +45,18 @@ namespace tiempo_libre.Models
 
         [Required]
         public DateTime FechaSolicitud { get; set; } = DateTime.UtcNow;
+
+        [MaxLength(50)]
+        public string EstadoSolicitud { get; set; } = "Pendiente"; // Pendiente, Aprobada, Rechazada
+
+        public int? JefeAprobadorId { get; set; }
+
+        [ForeignKey(nameof(JefeAprobadorId))]
+        public virtual User? JefeAprobador { get; set; }
+
+        public DateTime? FechaRespuesta { get; set; }
+
+        [MaxLength(500)]
+        public string? MotivoRechazo { get; set; }
     }
 }

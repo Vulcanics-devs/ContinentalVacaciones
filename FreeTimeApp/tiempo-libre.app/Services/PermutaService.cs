@@ -131,6 +131,7 @@ namespace tiempo_libre.Services
                 .Include(p => p.EmpleadoDestino)
                     .ThenInclude(e => e.Area)
                 .Include(p => p.SolicitadoPor)
+                .Include(p => p.JefeAprobador)
                 .AsQueryable();
 
             // Si se proporciona usuarioId, filtrar por área del jefe
@@ -174,7 +175,11 @@ namespace tiempo_libre.Services
                     TurnoEmpleadoDestino = p.TurnoEmpleadoDestino ?? "N/A",
                     Motivo = p.Motivo,
                     SolicitadoPorNombre = p.SolicitadoPor.FullName,
-                    FechaSolicitud = p.FechaSolicitud
+                    FechaSolicitud = p.FechaSolicitud,
+                    EstadoSolicitud = p.EstadoSolicitud,
+                    JefeAprobadorNombre = p.JefeAprobador != null ? p.JefeAprobador.FullName : null,
+                    FechaRespuesta = p.FechaRespuesta,
+                    MotivoRechazo = p.MotivoRechazo
                 })
                 .ToListAsync();
 
@@ -203,6 +208,119 @@ namespace tiempo_libre.Services
             }
 
             return System.Text.Encoding.UTF8.GetBytes(csv.ToString());
+        }
+
+        public async Task<ApiResponse<object>> ResponderSolicitudPermutaAsync(
+    int permutaId, bool aprobar, string? motivoRechazo, int jefeAreaId)
+        {
+            using var transaction = await _db.Database.BeginTransactionAsync();
+            try
+            {
+                _logger.LogInformation("=== INICIO ResponderSolicitudPermutaAsync ===");
+                _logger.LogInformation("PermutaId: {PermutaId}, Aprobar: {Aprobar}, JefeAreaId: {JefeAreaId}",
+                    permutaId, aprobar, jefeAreaId);
+
+                var permuta = await _db.Permutas
+                    .Include(p => p.EmpleadoOrigen)
+                        .ThenInclude(e => e.Area)
+                    .Include(p => p.EmpleadoDestino)
+                        .ThenInclude(e => e.Area)
+                    .FirstOrDefaultAsync(p => p.Id == permutaId);
+
+                if (permuta == null)
+                {
+                    _logger.LogWarning("Permuta no encontrada: {PermutaId}", permutaId);
+                    return new ApiResponse<object>(false, null, "Permuta no encontrada");
+                }
+
+                _logger.LogInformation("Permuta encontrada. Estado actual: {Estado}", permuta.EstadoSolicitud);
+
+                if (permuta.EstadoSolicitud != "Pendiente")
+                {
+                    _logger.LogWarning("Permuta ya fue procesada. Estado: {Estado}", permuta.EstadoSolicitud);
+                    return new ApiResponse<object>(false, null,
+                        $"La permuta ya fue {permuta.EstadoSolicitud.ToLower()}");
+                }
+
+                // Obtener información del usuario que está aprobando
+                var usuarioAprobador = await _db.Users
+                    .Include(u => u.Roles)
+                    .FirstOrDefaultAsync(u => u.Id == jefeAreaId);
+
+                if (usuarioAprobador == null)
+                {
+                    _logger.LogWarning("Usuario aprobador no encontrado: {JefeAreaId}", jefeAreaId);
+                    return new ApiResponse<object>(false, null, "Usuario no encontrado");
+                }
+
+                _logger.LogInformation("Usuario aprobador: {Usuario}, Roles: {Roles}",
+                    usuarioAprobador.FullName,
+                    string.Join(", ", usuarioAprobador.Roles.Select(r => r.Name)));
+
+                // Verificar si es SuperUsuario
+                var esSuperUsuario = usuarioAprobador.Roles.Any(r => r.Name == "SuperUsuario");
+
+                // Verificar si es Delegado Sindical
+                var esDelegadoSindical = usuarioAprobador.Roles.Any(r =>
+                    r.Name == "DelegadoSindical" || r.Name == "Delegado Sindical");
+
+                // Verificar si es Jefe de Área
+                var esJefeArea = usuarioAprobador.Roles.Any(r =>
+                    r.Name == "JefeArea" || r.Name == "Jefe De Area");
+
+                _logger.LogInformation("Validación de roles - SuperUsuario: {Super}, Delegado: {Delegado}, Jefe: {Jefe}",
+                    esSuperUsuario, esDelegadoSindical, esJefeArea);
+
+                // Validar permisos
+                if (!esSuperUsuario && !esDelegadoSindical && !esJefeArea)
+                {
+                    _logger.LogWarning("Usuario sin permisos para aprobar. Roles: {Roles}",
+                        string.Join(", ", usuarioAprobador.Roles.Select(r => r.Name)));
+                    return new ApiResponse<object>(false, null,
+                        "No tiene permisos para aprobar permutas");
+                }
+
+                // Si es Jefe de Área (y no es SuperUsuario ni Delegado), validar que sea del área correcta
+                if (esJefeArea && !esSuperUsuario && !esDelegadoSindical && usuarioAprobador.AreaId.HasValue)
+                {
+                    var areaEmpleado = permuta.EmpleadoOrigen?.AreaId;
+                    _logger.LogInformation("Validando área - ÁreaEmpleado: {AreaEmpleado}, ÁreaJefe: {AreaJefe}",
+                        areaEmpleado, usuarioAprobador.AreaId);
+
+                    if (usuarioAprobador.AreaId != areaEmpleado)
+                    {
+                        _logger.LogWarning("Jefe de área diferente. ÁreaJefe: {AreaJefe}, ÁreaEmpleado: {AreaEmpleado}",
+                            usuarioAprobador.AreaId, areaEmpleado);
+                        return new ApiResponse<object>(false, null,
+                            "No tiene permisos para aprobar permutas de esta área");
+                    }
+                }
+
+                // Actualizar la permuta
+                permuta.EstadoSolicitud = aprobar ? "Aprobada" : "Rechazada";
+                permuta.JefeAprobadorId = jefeAreaId;
+                permuta.FechaRespuesta = DateTime.UtcNow;
+                permuta.MotivoRechazo = aprobar ? null : motivoRechazo;
+
+                _logger.LogInformation("Actualizando permuta - Nuevo estado: {Estado}", permuta.EstadoSolicitud);
+
+                await _db.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                _logger.LogInformation("✅ Permuta {PermutaId} {Estado} por usuario {UsuarioId} ({Roles})",
+                    permutaId, permuta.EstadoSolicitud, jefeAreaId,
+                    string.Join(", ", usuarioAprobador.Roles.Select(r => r.Name)));
+
+                return new ApiResponse<object>(true, null,
+                    $"Permuta {permuta.EstadoSolicitud.ToLower()} exitosamente");
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                _logger.LogError(ex, "❌ Error al responder permuta {PermutaId}. Detalles: {Message}",
+                    permutaId, ex.Message);
+                return new ApiResponse<object>(false, null, $"Error: {ex.Message}");
+            }
         }
     }
 }

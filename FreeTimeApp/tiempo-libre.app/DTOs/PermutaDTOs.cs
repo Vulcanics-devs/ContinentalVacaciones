@@ -35,6 +35,15 @@ namespace tiempo_libre.DTOs
         public string? TurnoEmpleadoDestino { get; set; } = string.Empty;
     }
 
+    public class ResponderPermutaRequest
+    {
+        [Required]
+        public bool Aprobar { get; set; }
+
+        [MaxLength(500)]
+        public string? MotivoRechazo { get; set; }
+    }
+
     public class SolicitudPermutaResponse
     {
         public bool Exitoso { get; set; }

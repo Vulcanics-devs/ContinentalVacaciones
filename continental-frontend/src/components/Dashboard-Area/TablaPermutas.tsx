@@ -60,6 +60,29 @@ export const TablaPermutas = () => {
         }
     };
 
+    const handleAprobar = async (permutaId: number) => {
+        try {
+            await permutasListService.responderPermuta(permutaId, true);
+            toast.success('Permuta aprobada exitosamente');
+            loadPermutas();
+        } catch (error: any) {
+            toast.error(error.message);
+        }
+    };
+
+    const handleRechazar = async (permutaId: number) => {
+        const motivo = prompt('Motivo del rechazo:');
+        if (!motivo) return;
+
+        try {
+            await permutasListService.responderPermuta(permutaId, false, motivo);
+            toast.success('Permuta rechazada');
+            loadPermutas();
+        } catch (error: any) {
+            toast.error(error.message);
+        }
+    };
+
     return (
         <div className="bg-white border border-gray-200 rounded-lg p-6">
             <div className="flex items-center justify-between mb-6">
@@ -162,6 +185,42 @@ export const TablaPermutas = () => {
                                             </p>
                                             <p className="text-sm text-gray-800">{permuta.motivo}</p>
                                         </div>
+
+                                        <div className="flex items-center gap-3 mt-3">
+                                            <span className={`px-3 py-1 rounded-full text-xs font-medium ${permuta.estadoSolicitud === 'Aprobada'
+                                                    ? 'bg-green-100 text-green-800'
+                                                    : permuta.estadoSolicitud === 'Rechazada'
+                                                        ? 'bg-red-100 text-red-800'
+                                                        : 'bg-yellow-100 text-yellow-800'
+                                                }`}>
+                                                {permuta.estadoSolicitud}
+                                            </span>
+
+                                            {permuta.estadoSolicitud === 'Pendiente' && (
+                                                <>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="continental"
+                                                        onClick={() => handleAprobar(permuta.id)}
+                                                    >
+                                                        Aprobar
+                                                    </Button>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="destructive"
+                                                        onClick={() => handleRechazar(permuta.id)}
+                                                    >
+                                                        Rechazar
+                                                    </Button>
+                                                </>
+                                            )}
+                                        </div>
+
+                                        {permuta.motivoRechazo && (
+                                            <p className="text-xs text-red-600 mt-2">
+                                                Motivo rechazo: {permuta.motivoRechazo}
+                                            </p>
+                                        )}
 
                                         <div className="flex items-center gap-4 text-xs text-gray-500">
                                             <span>

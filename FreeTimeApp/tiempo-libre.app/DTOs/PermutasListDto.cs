@@ -14,6 +14,10 @@ namespace tiempo_libre.DTOs
         public string Motivo { get; set; } = string.Empty;
         public string SolicitadoPorNombre { get; set; } = string.Empty;
         public DateTime FechaSolicitud { get; set; }
+        public string EstadoSolicitud { get; set; } = "Pendiente";
+        public string? JefeAprobadorNombre { get; set; }
+        public DateTime? FechaRespuesta { get; set; }
+        public string? MotivoRechazo { get; set; }
     }
 
     public class PermutasListResponse

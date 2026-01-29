@@ -10,6 +10,15 @@ export interface PermutaListItem {
     motivo: string;
     solicitadoPorNombre: string;
     fechaSolicitud: string;
+    estadoSolicitud: 'Pendiente' | 'Aprobada' | 'Rechazada';
+    jefeAprobadorNombre?: string;
+    fechaRespuesta?: string;
+    motivoRechazo?: string;
+}
+
+export interface ResponderPermutaRequest {
+    aprobar: boolean;
+    motivoRechazo?: string;
 }
 
 export interface PermutasListResponse {
@@ -46,5 +55,16 @@ export const permutasListService = {
         }
 
         return await response.blob();
+    },
+
+    async responderPermuta(permutaId: number, aprobar: boolean, motivoRechazo?: string): Promise<void> {
+        const resp = await httpClient.post<void>(
+            `/api/permutas/responder/${permutaId}`,
+            { aprobar, motivoRechazo }
+        );
+
+        if (!resp.success) {
+            throw new Error(resp.errorMsg || 'Error al responder permuta');
+        }
     }
 };

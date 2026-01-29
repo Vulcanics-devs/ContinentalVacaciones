@@ -84,6 +84,48 @@ namespace tiempo_libre.Controllers
             }
         }
 
+        [HttpPost("responder/{permutaId}")]
+        [Authorize(Roles = "JefeArea,Jefe De Area,SuperUsuario,DelegadoSindical,Delegado Sindical")]
+        public async Task<IActionResult> ResponderPermuta(
+    int permutaId,
+    [FromBody] ResponderPermutaRequest request)
+        {
+            try
+            {
+                _logger.LogInformation("=== INICIO ResponderPermuta Controller ===");
+                _logger.LogInformation("PermutaId: {PermutaId}, Aprobar: {Aprobar}, MotivoRechazo: {Motivo}",
+                    permutaId, request.Aprobar, request.MotivoRechazo ?? "NULL");
+
+                var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var jefeId))
+                {
+                    _logger.LogWarning("No se pudo identificar el usuario del token");
+                    return Unauthorized(new ApiResponse<object>(false, null,
+                        "No se pudo identificar el usuario"));
+                }
+
+                _logger.LogInformation("Usuario identificado: {JefeId}", jefeId);
+
+                var response = await _permutaService.ResponderSolicitudPermutaAsync(
+                    permutaId, request.Aprobar, request.MotivoRechazo, jefeId);
+
+                if (!response.Success)
+                {
+                    _logger.LogWarning("Servicio retornó error: {ErrorMsg}", response.ErrorMsg);
+                    return BadRequest(response);
+                }
+
+                _logger.LogInformation("✅ Permuta procesada exitosamente");
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error inesperado en ResponderPermuta");
+                return StatusCode(500, new ApiResponse<object>(false, null,
+                    $"Error inesperado: {ex.Message}"));
+            }
+        }
+
         [HttpGet("listado")]
         [Authorize]
         public async Task<IActionResult> ObtenerPermutas([FromQuery] int? anio)

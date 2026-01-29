@@ -76,11 +76,11 @@ namespace tiempo_libre.Services
 
                     if (registrosActualizados > 0)
                     {
-                        _logger.LogInformation($"✅ Sincronización completada. {registrosActualizados} roles actualizados.");
+                        //_logger.LogInformation($"✅ Sincronización completada. {registrosActualizados} roles actualizados.");
                     }
                     else
                     {
-                        _logger.LogInformation($"✅ Sincronización completada. No hay cambios que aplicar.");
+                        //_logger.LogInformation($"✅ Sincronización completada. No hay cambios que aplicar.");
                     }
                 }
                 catch (Exception ex)

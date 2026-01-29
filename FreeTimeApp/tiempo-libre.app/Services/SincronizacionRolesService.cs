@@ -93,7 +93,7 @@ namespace tiempo_libre.Services
                         if (gruposMismaUnidad.Count == 1)
                         {
                             grupoCorrect = gruposMismaUnidad.First();
-                            _logger.LogInformation($"✅ Grupo único en UnidadOrg: GrupoId={grupoCorrect.GrupoId}");
+                            //_logger.LogInformation($"✅ Grupo único en UnidadOrg: GrupoId={grupoCorrect.GrupoId}");
                         }
                         else if (gruposMismaUnidad.Count > 1 && !string.IsNullOrEmpty(rolSAP.EncargadoRegistro))
                         {
@@ -129,7 +129,7 @@ namespace tiempo_libre.Services
                             // CRÍTICO: Buscar el grupo por Area.JefeId Y verificar EncargadoRegistro
                             if (jefeIdBuscado.HasValue)
                             {
-                                _logger.LogInformation($"🔍 Buscando grupo para Nomina={rolSAP.Nomina}, JefeId={jefeIdBuscado.Value}, EncargadoSAP='{rolSAP.EncargadoRegistro}'");
+                                //_logger.LogInformation($"🔍 Buscando grupo para Nomina={rolSAP.Nomina}, JefeId={jefeIdBuscado.Value}, EncargadoSAP='{rolSAP.EncargadoRegistro}'");
 
                                 // Buscar grupos donde el JefeId coincida
                                 var gruposConJefeCorrecto = gruposMismaUnidad
@@ -139,18 +139,18 @@ namespace tiempo_libre.Services
                                 if (gruposConJefeCorrecto.Count == 1)
                                 {
                                     grupoCorrect = gruposConJefeCorrecto.First();
-                                    _logger.LogInformation($"✅ Grupo ÚNICO encontrado por JefeId: GrupoId={grupoCorrect.GrupoId}, Area={grupoCorrect.Area.NombreGeneral}");
+                                    //_logger.LogInformation($"✅ Grupo ÚNICO encontrado por JefeId: GrupoId={grupoCorrect.GrupoId}, Area={grupoCorrect.Area.NombreGeneral}");
                                 }
                                 else if (gruposConJefeCorrecto.Count > 1)
                                 {
                                     // Hay múltiples grupos con el mismo jefe - verificar por EncargadoRegistro normalizado
                                     var encargadoNormalizado = RemoverAcentos(rolSAP.EncargadoRegistro.Trim()).ToLower();
 
-                                    _logger.LogInformation($"🔍 Múltiples grupos con JefeId={jefeIdBuscado.Value}, comparando EncargadoRegistro:");
+                                    //_logger.LogInformation($"🔍 Múltiples grupos con JefeId={jefeIdBuscado.Value}, comparando EncargadoRegistro:");
                                     foreach (var g in gruposConJefeCorrecto)
                                     {
                                         var encargadoAreaNormalizado = RemoverAcentos(g.Area.EncargadoRegistro ?? "").ToLower().Trim();
-                                        _logger.LogInformation($"   GrupoId={g.GrupoId}, Area='{g.Area.NombreGeneral}', EncargadoArea='{g.Area.EncargadoRegistro}' (normalizado='{encargadoAreaNormalizado}')");
+                                       // _logger.LogInformation($"   GrupoId={g.GrupoId}, Area='{g.Area.NombreGeneral}', EncargadoArea='{g.Area.EncargadoRegistro}' (normalizado='{encargadoAreaNormalizado}')");
                                     }
 
                                     grupoCorrect = gruposConJefeCorrecto.FirstOrDefault(g =>
