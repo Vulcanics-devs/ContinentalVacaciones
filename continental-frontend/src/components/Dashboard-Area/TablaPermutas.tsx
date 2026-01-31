@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { Calendar, ArrowLeftRight, Download } from "lucide-react";
 import { Button } from "../ui/button";
 import { permutasListService, type PermutaListItem } from "@/services/permutasListService";
@@ -21,7 +21,11 @@ export const TablaPermutas = () => {
         try {
             setLoading(true);
             const data = await permutasListService.obtenerPermutas(yearFilter);
+
+            // ✅ El backend YA filtra por área del jefe, solo asignamos directamente
             setPermutas(data.permutas);
+
+            console.log('📋 Permutas cargadas:', data.permutas.length);
         } catch (error) {
             console.error('Error cargando permutas:', error);
             toast.error('Error al cargar las permutas');
@@ -91,7 +95,7 @@ export const TablaPermutas = () => {
                         Historial de Permutas de Turno
                     </h2>
                     <p className="text-sm text-gray-600 mt-1">
-                        Intercambios de turnos registrados por empleados del �rea
+                        Intercambios de turnos registrados por empleados del área
                     </p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -188,10 +192,10 @@ export const TablaPermutas = () => {
 
                                         <div className="flex items-center gap-3 mt-3">
                                             <span className={`px-3 py-1 rounded-full text-xs font-medium ${permuta.estadoSolicitud === 'Aprobada'
-                                                    ? 'bg-green-100 text-green-800'
-                                                    : permuta.estadoSolicitud === 'Rechazada'
-                                                        ? 'bg-red-100 text-red-800'
-                                                        : 'bg-yellow-100 text-yellow-800'
+                                                ? 'bg-green-100 text-green-800'
+                                                : permuta.estadoSolicitud === 'Rechazada'
+                                                    ? 'bg-red-100 text-red-800'
+                                                    : 'bg-yellow-100 text-yellow-800'
                                                 }`}>
                                                 {permuta.estadoSolicitud}
                                             </span>
@@ -222,7 +226,7 @@ export const TablaPermutas = () => {
                                             </p>
                                         )}
 
-                                        <div className="flex items-center gap-4 text-xs text-gray-500">
+                                        <div className="flex items-center gap-4 text-xs text-gray-500 mt-2">
                                             <span>
                                                 Solicitado por: {permuta.solicitadoPorNombre}
                                             </span>

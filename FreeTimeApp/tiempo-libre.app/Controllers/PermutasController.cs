@@ -132,7 +132,14 @@ namespace tiempo_libre.Controllers
         {
             try
             {
-                var response = await _permutaService.ObtenerPermutasAsync(anio);
+
+                var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var usuarioId))
+                {
+                    return Unauthorized(new ApiResponse<object>(false, null, "No se pudo identificar el usuario"));
+                }
+
+                var response = await _permutaService.ObtenerPermutasAsync(anio, usuarioId);
                 return Ok(new ApiResponse<PermutasListResponse>(true, response));
             }
             catch (Exception ex)

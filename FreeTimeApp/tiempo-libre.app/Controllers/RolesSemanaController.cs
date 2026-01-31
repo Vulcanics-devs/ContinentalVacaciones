@@ -134,20 +134,14 @@ namespace tiempo_libre.Controllers
                 // Consultar vacaciones
                 var empleadosIds = empleados.Select(e => e.Id).ToList();
 
-                // NUEVO: Consultar permutas aprobadas
+                // NUEVO: Consultar permutas aprobadas (incluir AMBOS empleados)
                 var permutasAprobadas = await _db.Permutas
-                    .Where(p => empleadosIds.Contains(p.EmpleadoOrigenId) &&
-                                p.FechaPermuta >= DateOnly.FromDateTime(inicio) &&
-                                p.FechaPermuta <= DateOnly.FromDateTime(fin) &&
-                                p.EstadoSolicitud == "Aprobada")
-                    .Select(p => new {
-                        p.EmpleadoOrigenId,
-                        p.EmpleadoDestinoId,
-                        p.FechaPermuta,
-                        p.TurnoEmpleadoOrigen,
-                        p.TurnoEmpleadoDestino
-                    })
-                    .ToListAsync();
+                .Where(p => p.FechaPermuta >= DateOnly.FromDateTime(inicio) &&
+                            p.FechaPermuta <= DateOnly.FromDateTime(fin) &&
+                            p.EstadoSolicitud == "Aprobada" &&
+                            (empleadosIds.Contains(p.EmpleadoOrigenId) ||
+                             (p.EmpleadoDestinoId.HasValue && empleadosIds.Contains(p.EmpleadoDestinoId.Value))))
+                .ToListAsync();
 
                 // Crear diccionario de permutas por empleado y fecha
                 var permutasPorEmpleadoYFecha = new Dictionary<int, Dictionary<string, string>>();
@@ -156,17 +150,25 @@ namespace tiempo_libre.Controllers
                 {
                     var fechaStr = permuta.FechaPermuta.ToString("yyyy-MM-dd");
 
-                    // Asignar turno al empleado origen
+                    // ✅ EMPLEADO ORIGEN: recibe el turno del DESTINO
                     if (!permutasPorEmpleadoYFecha.ContainsKey(permuta.EmpleadoOrigenId))
                     {
                         permutasPorEmpleadoYFecha[permuta.EmpleadoOrigenId] = new Dictionary<string, string>();
                     }
 
-                    // El empleado origen toma el turno que originalmente tenía el destino
-                    var turnoNuevoOrigen = permuta.TurnoEmpleadoDestino ?? permuta.TurnoEmpleadoOrigen;
-                    permutasPorEmpleadoYFecha[permuta.EmpleadoOrigenId][fechaStr] = turnoNuevoOrigen;
+                    // Si es cambio individual (sin destino), usa su nuevo turno
+                    // Si hay destino, toma el turno que tenía el destino
+                    if (permuta.EmpleadoDestinoId.HasValue && !string.IsNullOrEmpty(permuta.TurnoEmpleadoDestino))
+                    {
+                        permutasPorEmpleadoYFecha[permuta.EmpleadoOrigenId][fechaStr] = permuta.TurnoEmpleadoDestino;
+                    }
+                    else
+                    {
+                        // Cambio individual: usar el nuevo turno especificado
+                        permutasPorEmpleadoYFecha[permuta.EmpleadoOrigenId][fechaStr] = permuta.TurnoEmpleadoOrigen;
+                    }
 
-                    // Si hay empleado destino (no es cambio individual), también actualizarlo
+                    // ✅ EMPLEADO DESTINO: recibe el turno del ORIGEN (solo si existe)
                     if (permuta.EmpleadoDestinoId.HasValue)
                     {
                         if (!permutasPorEmpleadoYFecha.ContainsKey(permuta.EmpleadoDestinoId.Value))
@@ -174,7 +176,7 @@ namespace tiempo_libre.Controllers
                             permutasPorEmpleadoYFecha[permuta.EmpleadoDestinoId.Value] = new Dictionary<string, string>();
                         }
 
-                        // El empleado destino toma el turno que originalmente tenía el origen
+                        // El destino toma el turno que originalmente tenía el origen
                         permutasPorEmpleadoYFecha[permuta.EmpleadoDestinoId.Value][fechaStr] = permuta.TurnoEmpleadoOrigen;
                     }
                 }

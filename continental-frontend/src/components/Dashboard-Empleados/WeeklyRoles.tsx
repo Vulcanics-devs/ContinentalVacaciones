@@ -162,6 +162,9 @@ const WeeklyRoles = () => {
     useEffect(() => {
         const loadWeek = async () => {
             if (!selectedGroup) return;
+            if (isBoss || isIndustrial) {
+                weeklyCache.clear();
+            }
             const cacheKey = `${selectedGroup}_${formatIso(weekStart)}`;
             const cached = weeklyCache.get(cacheKey);
             if (cached) {
@@ -184,7 +187,7 @@ const WeeklyRoles = () => {
         };
 
         loadWeek();
-    }, [selectedGroup, weekStart]);
+    }, [selectedGroup, weekStart, isBoss, isIndustrial]);
 
     // Cargar empleados del grupo seleccionado
     // Cargar empleados del grupo seleccionado

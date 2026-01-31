@@ -76,8 +76,8 @@ namespace tiempo_libre.Services
                     EmpleadoOrigenId = request.EmpleadoOrigenId,
                     EmpleadoDestinoId = request.EmpleadoDestinoId,
                     FechaPermuta = fechaPermuta,
-                    TurnoEmpleadoOrigen = request.TurnoEmpleadoOrigen,
-                    TurnoEmpleadoDestino = request.TurnoEmpleadoDestino,
+                    TurnoEmpleadoOrigen = request.TurnoEmpleadoDestino ?? request.TurnoEmpleadoOrigen,  // Turno que el ORIGEN recibirá
+                    TurnoEmpleadoDestino = request.TurnoEmpleadoOrigen,
                     Motivo = request.Motivo,
                     SolicitadoPorId = usuarioSolicitanteId,
                     FechaSolicitud = DateTime.UtcNow
@@ -125,69 +125,84 @@ namespace tiempo_libre.Services
 
         public async Task<PermutasListResponse> ObtenerPermutasAsync(int? anio = null, int? usuarioId = null)
         {
-            var query = _db.Permutas
-                .Include(p => p.EmpleadoOrigen)
-                    .ThenInclude(e => e.Area)
-                .Include(p => p.EmpleadoDestino)
-                    .ThenInclude(e => e.Area)
-                .Include(p => p.SolicitadoPor)
-                .Include(p => p.JefeAprobador)
-                .AsQueryable();
-
-            // Si se proporciona usuarioId, filtrar por área del jefe
-            if (usuarioId.HasValue)
+            try
             {
-                var usuario = await _db.Users
+                _db.Database.SetCommandTimeout(60);
+
+                var usuarioConsulta = await _db.Users
                     .Include(u => u.Roles)
-                    .FirstOrDefaultAsync(u => u.Id == usuarioId.Value);
+                    .FirstOrDefaultAsync(u => u.Id == usuarioId);
 
-                if (usuario != null)
+                if (usuarioConsulta == null)
                 {
-                    // Si es Jefe de Área, filtrar por su área
-                    if (usuario.Roles.Any(r => r.Name == "JefeArea" || r.Name == "Jefe de Área"))
+                    return new PermutasListResponse
                     {
-                        var areaId = usuario.AreaId;
-                        query = query.Where(p => p.EmpleadoOrigen.AreaId == areaId);
-                    }
-                    // Si es SuperUsuario, mostrar todas las permutas (no filtrar)
-                    // Si es otro rol, mostrar solo sus propias permutas
-                    else if (!usuario.Roles.Any(r => r.Name == "SuperUsuario"))
-                    {
-                        query = query.Where(p => p.SolicitadoPorId == usuarioId.Value);
-                    }
+                        Permutas = new List<PermutaListItem>(),
+                        Total = 0
+                    };
                 }
-            }
 
-            if (anio.HasValue)
-            {
-                query = query.Where(p => p.FechaPermuta.Year == anio.Value);
-            }
+                var esJefeArea = usuarioConsulta.Roles.Any(r => r.Name == "JefeArea" || r.Name == "Jefe De Area");
+                var esSuperUsuario = usuarioConsulta.Roles.Any(r => r.Name == "SuperUsuario");
 
-            var permutas = await query
-                .OrderByDescending(p => p.FechaSolicitud)
-                .Select(p => new PermutaListItem
+                var query = _db.Permutas
+                    .Include(p => p.EmpleadoOrigen)
+                        .ThenInclude(e => e.Area)
+                    .Include(p => p.EmpleadoOrigen.Grupo)
+                        .ThenInclude(g => g.Area)
+                    .Include(p => p.EmpleadoDestino)
+                        .ThenInclude(e => e.Area)
+                    .Include(p => p.SolicitadoPor)
+                    .Include(p => p.JefeAprobador)
+                    .AsQueryable();
+
+                // ✅ FILTRO IGUAL QUE REPROGRAMACIONES: Si es jefe de área y no es superusuario
+                if (esJefeArea && !esSuperUsuario && usuarioConsulta.AreaId.HasValue)
                 {
-                    Id = p.Id,
-                    EmpleadoOrigenNombre = p.EmpleadoOrigen.FullName,
-                    EmpleadoDestinoNombre = p.EmpleadoDestino != null ? p.EmpleadoDestino.FullName : "N/A",
-                    FechaPermuta = p.FechaPermuta,
-                    TurnoEmpleadoOrigen = p.TurnoEmpleadoOrigen,
-                    TurnoEmpleadoDestino = p.TurnoEmpleadoDestino ?? "N/A",
-                    Motivo = p.Motivo,
-                    SolicitadoPorNombre = p.SolicitadoPor.FullName,
-                    FechaSolicitud = p.FechaSolicitud,
-                    EstadoSolicitud = p.EstadoSolicitud,
-                    JefeAprobadorNombre = p.JefeAprobador != null ? p.JefeAprobador.FullName : null,
-                    FechaRespuesta = p.FechaRespuesta,
-                    MotivoRechazo = p.MotivoRechazo
-                })
-                .ToListAsync();
+                    // Filtrar por el área del grupo del empleado origen
+                    query = query.Where(p => p.EmpleadoOrigen.Grupo.Area.AreaId == usuarioConsulta.AreaId.Value);
+                }
 
-            return new PermutasListResponse
+                if (anio.HasValue)
+                {
+                    query = query.Where(p => p.FechaPermuta.Year == anio.Value);
+                }
+
+                var permutas = await query
+                    .OrderByDescending(p => p.FechaSolicitud)
+                    .Select(p => new PermutaListItem
+                    {
+                        Id = p.Id,
+                        EmpleadoOrigenNombre = p.EmpleadoOrigen.FullName,
+                        EmpleadoDestinoNombre = p.EmpleadoDestino != null ? p.EmpleadoDestino.FullName : "N/A",
+                        FechaPermuta = p.FechaPermuta,
+                        TurnoEmpleadoOrigen = p.TurnoEmpleadoOrigen,
+                        TurnoEmpleadoDestino = p.TurnoEmpleadoDestino ?? "N/A",
+                        Motivo = p.Motivo,
+                        SolicitadoPorNombre = p.SolicitadoPor.FullName,
+                        FechaSolicitud = p.FechaSolicitud,
+                        EstadoSolicitud = p.EstadoSolicitud,
+                        JefeAprobadorNombre = p.JefeAprobador != null ? p.JefeAprobador.FullName : null,
+                        FechaRespuesta = p.FechaRespuesta,
+                        MotivoRechazo = p.MotivoRechazo
+                    })
+                    .ToListAsync();
+
+                return new PermutasListResponse
+                {
+                    Permutas = permutas,
+                    Total = permutas.Count
+                };
+            }
+            catch (Exception ex)
             {
-                Permutas = permutas,
-                Total = permutas.Count
-            };
+                _logger.LogError(ex, "Error al obtener permutas");
+                return new PermutasListResponse
+                {
+                    Permutas = new List<PermutaListItem>(),
+                    Total = 0
+                };
+            }
         }
 
         // Método para exportar a CSV

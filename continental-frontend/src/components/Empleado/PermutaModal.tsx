@@ -66,9 +66,17 @@ export const PermutaModal = ({
         fetchEmpleados();
     }, [showSearch, empleadoOrigen]);
 
-    // ✅ AUTO-DETECTAR turnos cuando cambia la fecha
+    /// ✅ AUTO-DETECTAR turnos cuando cambia la fecha O el empleado destino
     useEffect(() => {
         const detectarTurnos = async () => {
+            console.log('🔍 Detectando turnos...', {
+                fechaPermuta,
+                grupoOrigenId: empleadoOrigen.grupo?.grupoId,
+                grupoDestinoId: empleadoDestino?.grupo?.grupoId,
+                empleadoOrigenId: empleadoOrigen.id,
+                empleadoDestinoId: empleadoDestino?.id
+            });
+
             if (!fechaPermuta || !empleadoOrigen.grupo?.grupoId) {
                 setTurnoOrigenDetectado("");
                 setTurnoDestinoDetectado("");
@@ -77,43 +85,81 @@ export const PermutaModal = ({
 
             setLoadingTurnos(true);
             try {
-                // ✅ Usar rolesService.getWeeklyRoles
-                const response = await rolesService.getWeeklyRoles(
+                // ✅ Consultar roles del grupo del empleado ORIGEN
+                const responseOrigen = await rolesService.getWeeklyRoles(
                     empleadoOrigen.grupo.grupoId,
-                    fechaPermuta // Ya está en formato YYYY-MM-DD
+                    fechaPermuta
                 );
 
-                if (response.semana) {
-                    // Turno del empleado origen
-                    const entryOrigen = response.semana.find(
-                        entry => entry.empleado.id === empleadoOrigen.id &&
+                console.log('📅 Respuesta roles grupo origen:', responseOrigen);
+                console.log('📊 Total de entradas:', responseOrigen.semana?.length);
+
+                // Turno del empleado origen
+                const entryOrigen = responseOrigen.semana.find(
+                    entry => entry.empleado.id === empleadoOrigen.id &&
+                        entry.fecha === fechaPermuta
+                );
+
+                console.log('👤 Turno origen encontrado:', entryOrigen);
+
+                if (entryOrigen?.codigoTurno && ['1', '2', '3'].includes(entryOrigen.codigoTurno)) {
+                    setTurnoOrigenDetectado(entryOrigen.codigoTurno);
+                    setTurnoOrigen(entryOrigen.codigoTurno);
+                    console.log('✅ Turno origen asignado:', entryOrigen.codigoTurno);
+                } else {
+                    setTurnoOrigenDetectado("");
+                    console.log('⚠️ Turno origen no válido o no encontrado');
+                }
+
+                // ✅ Turno del empleado DESTINO (puede estar en otro grupo)
+                if (empleadoDestino) {
+                    console.log('🔎 Buscando turno para empleado destino:', empleadoDestino.id);
+
+                    let entryDestino = responseOrigen.semana.find(
+                        entry => entry.empleado.id === empleadoDestino.id &&
                             entry.fecha === fechaPermuta
                     );
 
-                    if (entryOrigen?.codigoTurno && ['1', '2', '3'].includes(entryOrigen.codigoTurno)) {
-                        setTurnoOrigenDetectado(entryOrigen.codigoTurno);
-                        setTurnoOrigen(entryOrigen.codigoTurno);
-                    } else {
-                        setTurnoOrigenDetectado("");
-                    }
+                    console.log('🔍 Búsqueda en grupo origen:', entryDestino ? 'ENCONTRADO' : 'NO ENCONTRADO');
 
-                    // Turno del empleado destino
-                    if (empleadoDestino) {
-                        const entryDestino = response.semana.find(
-                            entry => entry.empleado.id === empleadoDestino.id &&
-                                entry.fecha === fechaPermuta
-                        );
+                    // ✅ Si no se encuentra en el grupo origen, buscar en su propio grupo
+                    if (!entryDestino && empleadoDestino.grupo?.grupoId &&
+                        empleadoDestino.grupo.grupoId !== empleadoOrigen.grupo.grupoId) {
 
-                        if (entryDestino?.codigoTurno && ['1', '2', '3'].includes(entryDestino.codigoTurno)) {
-                            setTurnoDestinoDetectado(entryDestino.codigoTurno);
-                            setTurnoDestino(entryDestino.codigoTurno);
-                        } else {
-                            setTurnoDestinoDetectado("");
+                        console.log('🔄 Buscando en grupo destino:', empleadoDestino.grupo.grupoId);
+
+                        try {
+                            const responseDestino = await rolesService.getWeeklyRoles(
+                                empleadoDestino.grupo.grupoId,
+                                fechaPermuta
+                            );
+
+                            entryDestino = responseDestino.semana.find(
+                                entry => entry.empleado.id === empleadoDestino.id &&
+                                    entry.fecha === fechaPermuta
+                            );
+
+                            console.log('🔍 Búsqueda en grupo destino:', entryDestino ? 'ENCONTRADO' : 'NO ENCONTRADO');
+                        } catch (error) {
+                            console.error('❌ Error consultando grupo destino:', error);
                         }
                     }
+
+                    console.log('👥 Turno destino final:', entryDestino);
+
+                    if (entryDestino?.codigoTurno && ['1', '2', '3'].includes(entryDestino.codigoTurno)) {
+                        setTurnoDestinoDetectado(entryDestino.codigoTurno);
+                        setTurnoDestino(entryDestino.codigoTurno);
+                        console.log('✅ Turno destino asignado:', entryDestino.codigoTurno);
+                    } else {
+                        setTurnoDestinoDetectado("");
+                        console.log('⚠️ Turno destino no válido o no encontrado');
+                    }
+                } else {
+                    console.log('ℹ️ No hay empleado destino seleccionado aún');
                 }
             } catch (error) {
-                console.error('Error detectando turnos:', error);
+                console.error('❌ Error detectando turnos:', error);
                 setTurnoOrigenDetectado("");
                 setTurnoDestinoDetectado("");
             } finally {
