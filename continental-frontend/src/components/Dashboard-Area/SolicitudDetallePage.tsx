@@ -31,7 +31,7 @@
  * =============================================================================
  */
 
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useEffect, useState, useMemo } from 'react'
 import { ArrowLeft, Calendar, User as UserIcon, MapPin, Clock, CheckCircle, XCircle } from 'lucide-react'
 import { Button } from '../ui/button'
@@ -62,6 +62,9 @@ export default function SolicitudDetallePage() {
     const [selectedSolicitudForApprove, setSelectedSolicitudForApprove] = useState<Solicitud | null>(null)
     const [showRejectModal, setShowRejectModal] = useState(false)
     const [showApproveModal, setShowApproveModal] = useState(false)
+
+    const location = useLocation()
+    const savedFilters = (location.state as any)?.filters
 
     // Opciones de Área base desde el usuario o desde la solicitud
     useEffect(() => {
@@ -277,7 +280,14 @@ export default function SolicitudDetallePage() {
                 <div className="flex items-center gap-4">
                     <Button
                         variant="outline"
-                        onClick={() => navigate(-1)}
+                        onClick={() => {
+                            navigate('/area/solicitudes', {
+                                state: {
+                                    filters: savedFilters,
+                                    refetch: true  // ← Agregar esta bandera
+                                }
+                            })
+                        }}
                         className="flex items-center gap-2"
                     >
                         <ArrowLeft className="w-4 h-4" />

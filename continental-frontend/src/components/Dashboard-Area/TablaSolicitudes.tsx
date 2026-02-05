@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { Search } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { DataTable, type Column } from '../ui/data-table'
 import RejectModal from './RejectModal'
 import ApproveModal from './ApproveModal'
@@ -34,6 +34,8 @@ export function TablaSolicitudes() {
     const [selectedSolicitudForReject, setSelectedSolicitudForReject] = useState<Solicitud | null>(null)
     const [showApproveModal, setShowApproveModal] = useState(false)
     const [selectedSolicitudForApprove, setSelectedSolicitudForApprove] = useState<Solicitud | null>(null)
+    const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
+    const [sortedSolicitudes, setSortedSolicitudes] = useState<Solicitud[]>([])
 
     const [showRejectModal, setShowRejectModal] = useState(false)
     const [query, setQuery] = useState('')
@@ -41,7 +43,10 @@ export function TablaSolicitudes() {
     // Ref para evitar llamadas duplicadas
     const lastFetchedFiltersRef = useRef<string>('')
 
-    // Función para obtener datos del usuario
+    const location = useLocation()
+    const filtersRestoredRef = useRef(false)
+
+    /// Función para obtener datos del usuario
     const fetchUserData = useCallback(async () => {
         if (!user?.id) {
             setLoadingUserData(false)
@@ -49,28 +54,33 @@ export function TablaSolicitudes() {
         }
 
         setLoadingUserData(true)
-        
+
         try {
             const userDetail = await userService.getUserById(user.id)
             console.log('User data for solicitudes:', userDetail)
             setUserData(userDetail)
-            
-            // Establecer área por defecto
-            if (userDetail?.areas && userDetail.areas.length > 0) {
-                const firstArea = userDetail.areas[0]
-                setSelectedAreaId(firstArea.areaId)
+
+            // Solo establecer área por defecto si NO hay filtros guardados
+            const savedFilters = (location.state as any)?.filters
+            if (!savedFilters?.selectedAreaId) {
+                if (userDetail?.areas && userDetail.areas.length > 0) {
+                    const firstArea = userDetail.areas[0]
+                    setSelectedAreaId(firstArea.areaId)
+                }
             }
         } catch (error) {
             console.error('Error fetching user data:', error)
         } finally {
             setLoadingUserData(false)
         }
-    }, [user?.id])
+    }, [user?.id, location.state])
 
-    // Efecto para cargar datos del usuario
+    // Cargar datos del usuario después de restaurar filtros
     useEffect(() => {
-        fetchUserData()
-    }, [fetchUserData])
+        if (filtersRestoredRef.current && !userData) {
+            fetchUserData()
+        }
+    }, [filtersRestoredRef.current, userData, fetchUserData])
 
     // Efecto para aplicar filtros
     useEffect(() => {
@@ -100,6 +110,83 @@ export function TablaSolicitudes() {
         console.log('TablaSolicitudes: Fetching with filters:', filters)
         fetchSolicitudes(filters)
     }, [selectedAreaId, estadoFilter, fetchSolicitudes])
+
+    // Efecto para restaurar filtros PRIMERO (antes de cualquier fetch)
+    useEffect(() => {
+        if (filtersRestoredRef.current) return
+
+        const savedFilters = (location.state as any)?.filters
+
+        if (savedFilters) {
+            // Restaurar todos los filtros de forma síncrona
+            if (savedFilters.selectedAreaId) setSelectedAreaId(savedFilters.selectedAreaId)
+            if (savedFilters.estadoFilter) setEstadoFilter(savedFilters.estadoFilter)
+            if (savedFilters.query) setQuery(savedFilters.query)
+            if (savedFilters.sortDirection) setSortDirection(savedFilters.sortDirection)
+
+            filtersRestoredRef.current = true
+
+            // Marcar que se han restaurado los filtros para evitar fetch automático
+            lastFetchedFiltersRef.current = 'RESTORING'
+        }
+    }, [location.state])
+
+    // Efecto para aplicar filtros (se ejecuta después de restaurar)
+    useEffect(() => {
+        // Esperar a que se restauren los filtros si es necesario
+        if (lastFetchedFiltersRef.current === 'RESTORING') {
+            lastFetchedFiltersRef.current = ''
+            return
+        }
+
+        // Solo hacer fetch si tenemos un área seleccionada
+        if (!selectedAreaId) {
+            return
+        }
+
+        const filters: SolicitudFilters = {
+            areaId: selectedAreaId
+        }
+
+        if (estadoFilter && estadoFilter !== 'Todas' && estadoFilter !== '') {
+            filters.estado = estadoFilter
+        }
+
+        // Crear clave única para los filtros
+        const filtersKey = JSON.stringify(filters)
+
+        // Evitar llamadas duplicadas
+        if (lastFetchedFiltersRef.current === filtersKey) {
+            console.log('TablaSolicitudes: Skipping duplicate fetch for filters:', filters)
+            return
+        }
+
+        lastFetchedFiltersRef.current = filtersKey
+        console.log('TablaSolicitudes: Fetching with filters:', filters)
+        fetchSolicitudes(filters)
+    }, [selectedAreaId, estadoFilter, fetchSolicitudes])
+
+    // Efecto para mantener solicitudes ordenadas
+    useEffect(() => {
+        if (solicitudes.length > 0) {
+            const sorted = [...solicitudes].sort((a, b) => {
+                const dateA = new Date(a.fechaSolicitud).getTime()
+                const dateB = new Date(b.fechaSolicitud).getTime()
+                return sortDirection === 'desc' ? dateB - dateA : dateA - dateB
+            })
+            setSortedSolicitudes(sorted)
+        }
+    }, [solicitudes, sortDirection])
+
+    // Limpiar el estado de navegación después de restaurar
+    useEffect(() => {
+        if (filtersRestoredRef.current && location.state) {
+            const timer = setTimeout(() => {
+                window.history.replaceState({}, document.title)
+            }, 500)
+            return () => clearTimeout(timer)
+        }
+    }, [location.state])
 
     const columns: Column<Solicitud>[] = [
         {
@@ -207,21 +294,22 @@ export function TablaSolicitudes() {
             key: 'acciones',
             label: 'Acciones',
             sortable: false,
-            className: 'w-[100px] pr-2',
+            className: 'w-[130px] pr-2',
             render: (_, row) => (
-                <div className="w-[130px]">
-                    {/* Solo mostrar botones de aprobar/rechazar si la solicitud está pendiente */}
-                    {row.estadoSolicitud === 'Pendiente' && (
-                        <div className="flex items-center gap-2 mb-2">
-                            
-                        </div>
-                    )}
-
+                <div className="flex flex-col gap-2">
                     <Link
                         to={`/area/solicitudes/${row.id}`}
+                        state={{
+                            filters: {
+                                selectedAreaId,
+                                estadoFilter,
+                                query,
+                                sortDirection
+                            }
+                        }}
                         className="inline-flex h-7 w-full items-center justify-center
-                            rounded-lg bg-[var(--color-continental-yellow,#FDB41C)]
-                            px-3 text-sm font-semibold text-black hover:opacity-90
+                        rounded-lg bg-[var(--color-continental-yellow,#FDB41C)]
+                    px-3 text-sm font-semibold text-black hover:opacity-90
                         "
                     >
                         Ver solicitud
@@ -232,7 +320,19 @@ export function TablaSolicitudes() {
     ]
 
     const handleSort = (columnKey: string) => {
-        console.log('Ordenar por:', columnKey)
+        if (columnKey === 'fechaSolicitud') {
+            const newDirection = sortDirection === 'desc' ? 'asc' : 'desc'
+            setSortDirection(newDirection)
+
+            const sorted = [...sortedSolicitudes].sort((a, b) => {
+                const dateA = new Date(a.fechaSolicitud).getTime()
+                const dateB = new Date(b.fechaSolicitud).getTime()
+
+                return newDirection === 'desc' ? dateB - dateA : dateA - dateB
+            })
+
+            setSortedSolicitudes(sorted)
+        }
     }
 
     const handleAprobar = (id: number) => {
@@ -364,7 +464,7 @@ export function TablaSolicitudes() {
                     ) : (
                         <DataTable<Solicitud>
                             columns={columns}
-                            data={solicitudes}
+                            data={sortedSolicitudes}
                             keyField="id"
                             emptyMessage="No hay solicitudes disponibles"
                             onSort={handleSort}
