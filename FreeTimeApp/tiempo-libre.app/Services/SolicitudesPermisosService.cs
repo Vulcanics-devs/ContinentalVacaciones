@@ -14,6 +14,7 @@ namespace tiempo_libre.Services
         private readonly FreeTimeDbContext _db;
         private readonly PermisosIncapacidadesService _permisosService;
         private readonly NotificacionesService _notificacionesService;
+        private readonly ISuplenciaService _suplenciaService;
         private readonly ILogger<SolicitudesPermisosService> _logger;
 
         // Códigos que NO pueden solicitar los delegados sindicales
@@ -29,11 +30,13 @@ namespace tiempo_libre.Services
             FreeTimeDbContext db,
             PermisosIncapacidadesService permisosService,
             NotificacionesService notificacionesService,
+            ISuplenciaService suplenciaService,
             ILogger<SolicitudesPermisosService> logger)
         {
             _db = db;
             _permisosService = permisosService;
             _notificacionesService = notificacionesService;
+            _suplenciaService = suplenciaService;
             _logger = logger;
         }
 
@@ -452,8 +455,16 @@ namespace tiempo_libre.Services
 
                 if (solicitudValidacion.JefeAprobadorId != jefeAreaId)
                 {
-                    return new ApiResponse<object>(false, null,
-                        "No tiene permisos para responder esta solicitud");
+                    // Verificar si es suplente válido
+                    var suplencia = await _suplenciaService.ObtenerSuplenciaActiva(jefeAreaId);
+                    
+                    // Si no es suplente o el titular de la suplencia no es el jefe aprobador requerido
+                    if (suplencia == null || suplencia.UsuarioTitularId != solicitudValidacion.JefeAprobadorId)
+                    {
+                        return new ApiResponse<object>(false, null,
+                            "No tiene permisos para responder esta solicitud");
+                    }
+                    // Si pasa aquí, es un suplente válido y activo
                 }
 
                 // ✅ Ahora SÍ actualizar el registro completo

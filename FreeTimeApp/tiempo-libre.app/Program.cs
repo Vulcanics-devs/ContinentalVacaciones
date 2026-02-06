@@ -49,6 +49,7 @@ builder.Services.AddScoped<tiempo_libre.Services.VacacionesExportService>();
 builder.Services.AddScoped<tiempo_libre.Services.ReportesVacacionesService>();
 builder.Services.AddScoped<tiempo_libre.Services.PermutaService>();
 builder.Services.AddScoped<tiempo_libre.Services.PermisosIncapacidadesService>();
+builder.Services.AddScoped<tiempo_libre.Services.ISuplenciaService, tiempo_libre.Services.SuplenciaService>();
 builder.Services.AddScoped<tiempo_libre.Services.SolicitudesPermisosService>();
 builder.Services.AddScoped<tiempo_libre.Services.SincronizacionRolesService>();
 // Email Service con configuración SMTP

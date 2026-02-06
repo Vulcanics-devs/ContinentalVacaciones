@@ -736,8 +736,56 @@ namespace tiempo_libre.app.Controllers
                         entityToUpdate.SuplenteId = request.SuplenteId;
                         break;
 
+                    case "SuperUsuario":
+                    case "Super Usuario":
+                        // No hay columna legacy para actualizar, solo se guarda en SuplentePeriodos
+                        break;
+
                     default:
                         return BadRequest(new ApiResponse<object>(false, null, "Rol no válido. Roles permitidos: JefeDeArea, LiderDeGrupo, IngenieroIndustrial"));
+                }
+
+                // Crear registro en SuplentePeriodos si tenemos fechas
+                if (request.SuplenteId.HasValue && !string.IsNullOrEmpty(request.FechaInicio) && !string.IsNullOrEmpty(request.FechaFin))
+                {
+                    if (DateOnly.TryParse(request.FechaInicio, out var fechaInicio) && DateOnly.TryParse(request.FechaFin, out var fechaFin))
+                    {
+                        var nuevoPeriodo = new SuplentePeriodo
+                        {
+                            UsuarioId = currentUser.Id,
+                            SuplenteId = request.SuplenteId.Value,
+                            Rol = request.Rol,
+                            AreaId = request.AreaId,
+                            GrupoId = request.GrupoId,
+                            FechaInicio = fechaInicio.ToDateTime(TimeOnly.MinValue),
+                            FechaFin = fechaFin.ToDateTime(TimeOnly.MinValue).AddDays(1).AddSeconds(-1), // Final del día
+                            Comentarios = request.Comentarios,
+                            Activo = true,
+                            CreatedAt = DateTime.UtcNow,
+                            CreatedBy = username
+                        };
+
+                        _dbContext.SuplentePeriodos.Add(nuevoPeriodo);
+                        
+                        // Desactivar periodos anteriores activos del mismo tipo para evitar conflictos
+                        // Esto es opcional, pero recomendable para mantener consistencia
+                        var periodosAnteriores = await _dbContext.SuplentePeriodos
+                            .Where(sp => sp.UsuarioId == currentUser.Id 
+                                      && sp.Activo 
+                                      && sp.Rol == request.Rol 
+                                      && sp.AreaId == request.AreaId 
+                                      && sp.GrupoId == request.GrupoId)
+                            .ToListAsync();
+                        
+                        foreach(var p in periodosAnteriores)
+                        {
+                            p.Activo = false;
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Fechas de suplencia inválidas: {Inicio} - {Fin}", request.FechaInicio, request.FechaFin);
+                    }
                 }
 
                 await _dbContext.SaveChangesAsync();

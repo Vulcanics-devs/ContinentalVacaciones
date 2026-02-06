@@ -83,27 +83,47 @@ export const SolicitarSuplente = () => {
             if (!user) return;
             const role = getUserRole(user);
             if (!role) return;
-            if (role !== UserRole.INDUSTRIAL && role !== UserRole.AREA_ADMIN) return;
+            // Allow SuperAdmin to load areas too
+            if (role !== UserRole.INDUSTRIAL && role !== UserRole.AREA_ADMIN && role !== UserRole.SUPER_ADMIN) return;
 
             setAreasLoading(true);
             try {
-                if (role === UserRole.INDUSTRIAL) {
-                    const res = await areasService.getAreasByIngeniero(user.id);
-                    const data = (res?.data || []) as AreaByIngenieroItem[];
-                    setEngineerAreas(data);
-                    const items = data
-                        .filter((a) => a && typeof a.areaId === 'number')
-                        .map((a) => ({ id: a.areaId, nombre: a.areaNombre }));
-                    setAreaOptions(items);
-                    if (items.length === 1) setSelectedAreaId(items[0].id);
-                } else if (role === UserRole.AREA_ADMIN) {
-                    const all = await areasService.getAreas();
-                    const owned = (all || []).filter((a: any) => a?.jefeId === user.id) as Area[];
-                    setOwnedAreas(owned);
-                    const items = owned.map((a: Area) => ({ id: a.areaId, nombre: a.nombreGeneral }));
-                    setAreaOptions(items);
-                    if (items.length === 1) setSelectedAreaId(items[0].id);
+                let engineerItems: { id: number; nombre: string }[] = [];
+                let ownedItems: { id: number; nombre: string }[] = [];
+
+                // Check for engineer areas (Industrial OR SuperAdmin)
+                if (role === UserRole.INDUSTRIAL || role === UserRole.SUPER_ADMIN) {
+                    try {
+                        const res = await areasService.getAreasByIngeniero(user.id);
+                        const data = (res?.data || []) as AreaByIngenieroItem[];
+                        setEngineerAreas(data);
+                        engineerItems = data
+                            .filter((a) => a && typeof a.areaId === 'number')
+                            .map((a) => ({ id: a.areaId, nombre: a.areaNombre }));
+                    } catch (e) {
+                        console.debug("Not an engineer or error fetching engineer areas", e);
+                    }
                 }
+
+                // Check for owned areas (AreaAdmin OR SuperAdmin)
+                if (role === UserRole.AREA_ADMIN || role === UserRole.SUPER_ADMIN) {
+                    try {
+                        const all = await areasService.getAreas();
+                        const owned = (all || []).filter((a: any) => a?.jefeId === user.id) as Area[];
+                        setOwnedAreas(owned);
+                        ownedItems = owned.map((a: Area) => ({ id: a.areaId, nombre: a.nombreGeneral }));
+                    } catch (e) {
+                        console.debug("Not an area admin or error fetching owned areas", e);
+                    }
+                }
+
+                // Combine and deduplicate
+                const allItems = [...ownedItems, ...engineerItems];
+                const uniqueItems = Array.from(new Map(allItems.map(item => [item.id, item])).values());
+                
+                setAreaOptions(uniqueItems);
+                if (uniqueItems.length === 1) setSelectedAreaId(uniqueItems[0].id);
+
             } catch (e) {
                 setAreaOptions([]);
             } finally {
@@ -138,37 +158,50 @@ export const SolicitarSuplente = () => {
     };
 
     const buildPayload = async (suplenteId: number | null | undefined) => {
-        const role = getUserRole(user);
-        if (!role) throw new Error('Rol de usuario no disponible');
+        const userRole = getUserRole(user);
+        if (!userRole) throw new Error('Rol de usuario no disponible');
+
+        // Default payload with userRole, might be overridden
         const payload: { Rol: string; GrupoId?: number; AreaId?: number; SuplenteId?: number | null } = {
-            Rol: role,
+            Rol: userRole,
             SuplenteId: suplenteId ?? null,
         };
-        if (role === UserRole.LEADER) {
+
+        if (userRole === UserRole.LEADER) {
             if (!user?.grupo?.grupoId) {
                 throw new Error('No se encontró GrupoId del usuario');
             }
             payload.GrupoId = user.grupo.grupoId;
-        }
-        if (role === UserRole.INDUSTRIAL) {
-            let areaId = selectedAreaId ?? user?.area?.areaId;
-            if (!areaId) {
-                areaId = await resolveAreaIdForRole(role);
+        } 
+        else {
+            // For INDUSTRIAL, AREA_ADMIN, or SUPER_ADMIN acting as one of them
+            let areaId = selectedAreaId;
+            
+            // If no area selected, try to resolve one
+            if (!areaId && (userRole === UserRole.INDUSTRIAL || userRole === UserRole.AREA_ADMIN)) {
+                areaId = await resolveAreaIdForRole(userRole) ?? user?.area?.areaId;
             }
-            if (!areaId) {
-                throw new Error('No se encontró AreaId del usuario');
+
+            if (areaId) {
+                payload.AreaId = areaId;
+                
+                // Determine the role context based on the area
+                const isOwned = ownedAreas.some(a => a.areaId === areaId);
+                const isEngineer = engineerAreas.some(a => a.areaId === areaId);
+
+                if (isOwned) {
+                    payload.Rol = UserRole.AREA_ADMIN;
+                } else if (isEngineer) {
+                    payload.Rol = UserRole.INDUSTRIAL;
+                } else if (userRole === UserRole.SUPER_ADMIN) {
+                     // Fallback for superadmin if area found but not in specific lists (shouldn't happen with correct logic)
+                     // Try to guess or default to AreaAdmin if they have permissions
+                     payload.Rol = UserRole.AREA_ADMIN; 
+                }
+            } else if (userRole !== UserRole.SUPER_ADMIN) {
+                 // Only throw if not SuperAdmin (SuperAdmin might not have area selected but logic shouldn't reach here if blocked by UI)
+                 throw new Error('No se encontró AreaId del usuario');
             }
-            payload.AreaId = areaId;
-        }
-        if (role === UserRole.AREA_ADMIN) {
-            let areaId = selectedAreaId ?? user?.area?.areaId;
-            if (!areaId) {
-                areaId = await resolveAreaIdForRole(role);
-            }
-            if (!areaId) {
-                throw new Error('No se encontró AreaId del usuario');
-            }
-            payload.AreaId = areaId;
         }
         return payload;
     };
@@ -344,7 +377,7 @@ export const SolicitarSuplente = () => {
                         </div>
 
                         <form onSubmit={handleSubmit} className="space-y-6">
-                            {(userRole === UserRole.INDUSTRIAL || userRole === UserRole.AREA_ADMIN) && (
+                            {(areaOptions.length > 0 || userRole === UserRole.INDUSTRIAL || userRole === UserRole.AREA_ADMIN) && (
                                 <div className="space-y-2">
                                     <Label htmlFor="area" className="text-sm font-medium text-continental-black">
                                         Área {areaOptions.length > 1 ? '*' : ''}
