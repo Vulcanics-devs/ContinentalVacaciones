@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from "react";
+﻿import { useState, useEffect, useRef } from "react";
 import { Calendar, ArrowLeftRight, Download } from "lucide-react";
 import { Button } from "../ui/button";
 import { permutasListService, type PermutaListItem } from "@/services/permutasListService";
@@ -21,18 +21,9 @@ export const TablaPermutas = () => {
         try {
             setLoading(true);
 
-            // Obtener área del usuario actual
-            const userStr = localStorage.getItem('user');
-            let areaId: number | undefined;
-
-            if (userStr) {
-                const currentUser = JSON.parse(userStr);
-                areaId = currentUser.areaId || currentUser.area?.areaId;
-            }
-
             const data = await permutasListService.obtenerPermutas({
-                anio: yearFilter,
-                areaId: areaId
+                anio: yearFilter
+                // ← Quitar el filtro de areaId aquí
             });
 
             setPermutas(data.permutas);
@@ -44,6 +35,29 @@ export const TablaPermutas = () => {
             setLoading(false);
         }
     };
+
+    const abortControllerRef = useRef<AbortController | null>(null)
+
+    // Reemplaza useEffect:
+    useEffect(() => {
+        // Cancelar petición anterior
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort()
+        }
+        abortControllerRef.current = new AbortController()
+
+        const timeoutId = setTimeout(() => {
+            loadPermutas()
+        }, 300)
+
+        return () => {
+            clearTimeout(timeoutId)
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort()
+                abortControllerRef.current = null
+            }
+        }
+    }, [yearFilter])
 
     const handleExportExcel = async () => {
         try {

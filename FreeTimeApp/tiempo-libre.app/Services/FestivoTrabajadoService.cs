@@ -503,11 +503,11 @@ namespace tiempo_libre.Services
         /// Consultar festivos trabajados disponibles para un empleado
         /// </summary>
         public async Task<ApiResponse<ListaFestivosTrabajadosResponse>> ConsultarFestivosTrabajadosAsync(
-    ConsultaFestivosTrabajadosRequest request)
+        ConsultaFestivosTrabajadosRequest request)
         {
             try
             {
-                // ✅ Obtener días inhábiles en lugar de festivos trabajados
+                // ✅ Obtener días inhábiles por ley
                 var query = _db.DiasInhabiles
                     .Where(d => d.TipoActividadDelDia == TipoActividadDelDiaEnum.InhabilPorLey)
                     .AsQueryable();
@@ -517,15 +517,26 @@ namespace tiempo_libre.Services
                 {
                     query = query.Where(d => d.Fecha.Year == request.Anio.Value);
                 }
+                else
+                {
+                    // ✅ Si no se especifica año, obtener del año actual
+                    var currentYear = DateTime.Now.Year;
+                    query = query.Where(d => d.Fecha.Year == currentYear);
+                }
 
-                var diasInhabiles = await query.OrderBy(d => d.Fecha).ToListAsync();
+                // ✅ CAMBIO CRÍTICO: NO agrupar - obtener TODOS los días
+                var diasInhabiles = await query
+                    .OrderBy(d => d.Fecha)
+                    .ToListAsync();
+
+                _logger.LogInformation($"📅 Días inhábiles encontrados en BD: {diasInhabiles.Count}");
 
                 var festivosDto = new List<FestivoTrabajadoDto>();
                 var culture = new CultureInfo("es-ES");
 
+                // ✅ Iterar sobre TODOS los días sin agrupar
                 foreach (var diaInhabil in diasInhabiles)
                 {
-                    // ✅ Verificar si este día inhábil ya fue solicitado por el empleado
                     var yaSolicitado = false;
 
                     if (request.EmpleadoId.HasValue)
@@ -541,7 +552,7 @@ namespace tiempo_libre.Services
                     {
                         Id = diaInhabil.Id,
                         Nomina = request.Nomina ?? 0,
-                        NombreEmpleado = diaInhabil.Detalles, // Nombre del festivo
+                        NombreEmpleado = diaInhabil.Detalles,
                         FestivoTrabajado = diaInhabil.Fecha.ToString("yyyy-MM-dd"),
                         DiaSemana = diaInhabil.Fecha.ToString("dddd", culture),
                         YaIntercambiado = yaSolicitado,
@@ -549,12 +560,13 @@ namespace tiempo_libre.Services
                         FechaIntercambio = null
                     };
 
-                    // Si solo queremos disponibles, filtrar los ya solicitados
                     if (!request.SoloDisponibles || !dto.YaIntercambiado)
                     {
                         festivosDto.Add(dto);
                     }
                 }
+
+                _logger.LogInformation($"✅ Festivos DTOs generados: {festivosDto.Count}");
 
                 var response = new ListaFestivosTrabajadosResponse
                 {
@@ -573,7 +585,6 @@ namespace tiempo_libre.Services
                     $"Error inesperado: {ex.Message}");
             }
         }
-
         /// <summary>
         /// Validar si un intercambio de festivo es posible antes de solicitarlo
         /// </summary>

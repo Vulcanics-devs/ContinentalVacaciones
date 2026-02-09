@@ -195,7 +195,7 @@ export const PermutaModal = ({
             const payload: PermutaRequest = {
                 empleadoOrigenId: empleadoOrigen.id,
                 empleadoDestinoId: esCambioIndividual ? null : empleadoDestino!.id,
-                fechaPermuta: fechaPermuta,
+                fechaPermuta: (fechaPermuta),
                 motivo: motivo.trim(),
                 solicitadoPor: solicitadoPorId,
                 turnoEmpleadoOrigen: turnoOrigen,
@@ -297,7 +297,7 @@ export const PermutaModal = ({
                                             onClick={() => setShowSearch(!showSearch)}
                                         >
                                             <Users className="w-4 h-4 mr-2" />
-                                            Seleccionar empleado del mismo grupo
+                                            Seleccionar empleado
                                         </Button>
 
                                         {showSearch && (

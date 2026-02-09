@@ -78,6 +78,35 @@ export function TablaFestivosTrabajados() {
         fetchSolicitudes()
     }, [fetchSolicitudes])
 
+    const abortControllerRef = useRef<AbortController | null>(null)
+
+    // Reemplaza useEffect de fetchSolicitudes:
+    useEffect(() => {
+        if (!selectedAreaId) return
+
+        const filtersKey = `${selectedAreaId}-${estadoFilter}`
+        if (lastFetchedFiltersRef.current === filtersKey) return
+
+        // Cancelar petición anterior
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort()
+        }
+        abortControllerRef.current = new AbortController()
+
+        const timeoutId = setTimeout(() => {
+            lastFetchedFiltersRef.current = filtersKey
+            fetchSolicitudes()
+        }, 300)
+
+        return () => {
+            clearTimeout(timeoutId)
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort()
+                abortControllerRef.current = null
+            }
+        }
+    }, [selectedAreaId, estadoFilter, fetchSolicitudes])
+
     const handleAprobar = (id: number) => {
         const solicitud = solicitudes.find(s => s.id === id)
         if (solicitud) {

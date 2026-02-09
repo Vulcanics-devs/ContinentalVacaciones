@@ -364,6 +364,148 @@ namespace tiempo_libre.Services
         }
 
         /// <summary>
+        /// Genera el reporte SAP de permutas aprobadas
+        /// Formato: NOMINA,FECHA(ddMMyyyy),FECHA(ddMMyyyy),,,,,TURNO_NUEVO
+        /// </summary>
+        public async Task<(MemoryStream Stream, string FileName)> GenerarReporteSapPermutasAsync(
+    int year,
+    int? areaId = null,
+    List<string>? gruposRol = null)
+        {
+            try
+            {
+                _logger.LogInformation("Generando Reporte SAP Permutas para año {Year}, área {AreaId}, grupos {Grupos}",
+                    year, areaId?.ToString() ?? "Todos", gruposRol != null ? string.Join(",", gruposRol) : "Todos");
+
+                var query = _context.Permutas
+                    .AsNoTracking()
+                    .Include(p => p.EmpleadoOrigen)
+                        .ThenInclude(e => e.Grupo)
+                    .Include(p => p.EmpleadoOrigen)
+                        .ThenInclude(e => e.Area)
+                    .Include(p => p.EmpleadoDestino)
+                        .ThenInclude(e => e.Grupo)
+                    .Where(p => p.EstadoSolicitud == "Aprobada" &&
+                               p.FechaPermuta >= new DateOnly(year, 1, 1) &&
+                               p.FechaPermuta <= new DateOnly(year, 12, 31));
+
+                // Filtrar por área del empleado origen
+                if (areaId.HasValue)
+                    query = query.Where(p => p.EmpleadoOrigen.AreaId == areaId.Value);
+
+                // Filtrar por grupos (rol del grupo)
+                if (gruposRol != null && gruposRol.Any())
+                    query = query.Where(p => p.EmpleadoOrigen.Grupo != null &&
+                                            gruposRol.Contains(p.EmpleadoOrigen.Grupo.Rol));
+
+                var permutasRaw = await query
+                    .OrderBy(p => p.EmpleadoOrigen.Nomina)
+                    .ThenBy(p => p.FechaPermuta)
+                    .Select(p => new
+                    {
+                        NominaOrigen = p.EmpleadoOrigen.Nomina,
+                        NominaDestino = p.EmpleadoDestino != null ? p.EmpleadoDestino.Nomina : (int?)null,
+                        Fecha = p.FechaPermuta,
+                        EsCambioIndividual = !p.EmpleadoDestinoId.HasValue
+                    })
+                    .ToListAsync();
+
+                if (permutasRaw.Count == 0)
+                {
+                    _logger.LogWarning("No se encontraron permutas aprobadas para el año {Year}. Generando archivo vacío.", year);
+                }
+
+                // ✅ Obtener los turnos de RolesEmpleadosSAP para todas las nóminas involucradas
+                var nominasUnicas = permutasRaw
+                    .SelectMany(p => new[] { p.NominaOrigen, p.NominaDestino })
+                    .Where(n => n.HasValue)
+                    .Select(n => n!.Value)
+                    .Distinct()
+                    .ToList();
+
+                var turnosPorNomina = await _context.RolesEmpleadosSAP
+                    .Where(r => nominasUnicas.Contains(r.Nomina))
+                    .Select(r => new { r.Nomina, r.Turno })
+                    .ToDictionaryAsync(r => r.Nomina, r => r.Turno ?? "");
+
+                var sb = new StringBuilder(permutasRaw.Count * 64);
+
+                foreach (var permuta in permutasRaw)
+                {
+                    string turnoNuevo;
+
+                    if (permuta.EsCambioIndividual)
+                    {
+                        // ✅ Cambio individual: mantiene su turno original
+                        turnoNuevo = permuta.NominaOrigen.HasValue && turnosPorNomina.TryGetValue(permuta.NominaOrigen.Value, out var turnoOrigen)
+                            ? turnoOrigen
+                            : "";
+                    }
+                    else
+                    {
+                        // ✅ Permuta con otro empleado: ORIGEN recibe el turno del DESTINO
+                        turnoNuevo = permuta.NominaDestino.HasValue && turnosPorNomina.TryGetValue(permuta.NominaDestino.Value, out var turnoDestino)
+                            ? turnoDestino
+                            : "";
+                    }
+
+                    var fechaStr = permuta.Fecha.ToString("ddMMyyyy");
+
+                    sb.Append(permuta.NominaOrigen)
+                      .Append(',')
+                      .Append(fechaStr)
+                      .Append(',')
+                      .Append(fechaStr)
+                      .Append(',')
+                      .Append(',')  // Columna 4 vacía
+                      .Append(',')  // Columna 5 vacía
+                      .Append(',')  // Columna 6 vacía
+                      .Append(',')  // Columna 7 vacía
+                      .Append(turnoNuevo)  // ✅ Columna 8: Turno nuevo (de RolesEmpleadosSAP)
+                      .Append('\n');
+
+                    // ✅ Si hay empleado destino, agregar su línea también
+                    if (!permuta.EsCambioIndividual && permuta.NominaDestino.HasValue)
+                    {
+                        // El DESTINO recibe el turno del ORIGEN
+                        var turnoDestinoNuevo = permuta.NominaOrigen.HasValue && turnosPorNomina.TryGetValue(permuta.NominaOrigen.Value, out var turnoDestinoVal)
+                            ? turnoDestinoVal
+                            : "";
+
+                        sb.Append(permuta.NominaDestino.Value)
+                          .Append(',')
+                          .Append(fechaStr)
+                          .Append(',')
+                          .Append(fechaStr)
+                          .Append(',')
+                          .Append(',')
+                          .Append(',')
+                          .Append(',')
+                          .Append(',')
+                          .Append(turnoDestinoNuevo)  // ✅ Turno nuevo del destino
+                          .Append('\n');
+                    }
+                }
+
+                var encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+                var bytes = encoding.GetBytes(sb.ToString());
+                var stream = new MemoryStream(bytes, writable: false);
+
+                var fileName = $"ReporteSAP_Permutas_{year}_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
+
+                _logger.LogInformation("Reporte SAP Permutas generado con {Count} líneas para {TotalPermutas} permutas",
+                    sb.ToString().Split('\n').Length - 1, permutasRaw.Count);
+
+                return (stream, fileName);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error generando reporte SAP de permutas");
+                throw;
+            }
+        }
+
+        /// <summary>
         /// Sanitiza el nombre de una hoja de Excel para cumplir con las restricciones:
         /// - Máximo 31 caracteres
         /// - No puede contener: : \ / ? * [ ]

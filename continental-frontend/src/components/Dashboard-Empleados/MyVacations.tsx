@@ -766,29 +766,39 @@ export const RequestModal = ({
                                     <label className="block text-sm font-medium text-gray-700">
                                         Festivo Trabajado Disponible
                                     </label>
-                                    <select
-                                        value={selectedFestivo || ''}
-                                        onChange={(e) => setSelectedFestivo(e.target.value ? Number(e.target.value) : null)}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        disabled={loading}
-                                    >
-                                        <option value="">Selecciona un festivo trabajado</option>
-                                                {festivosDisponibles.map((festivo) => (
-                                                    <option key={festivo.id} value={festivo.id}>
-                                                        {/* ✅ CAMBIAR de parseISO a new Date directo */}
-                                                        {new Date(festivo.festivoTrabajado + 'T00:00:00').toLocaleDateString('es-MX', {
-                                                            day: 'numeric',
-                                                            month: 'long',
-                                                            year: 'numeric'
-                                                        })}
-                                                        {' - '}
-                                                        {festivo.nombreEmpleado} {/* Nombre del festivo */}
-                                                        {' ('}
-                                                        {festivo.diaSemana}
-                                                        {')'}
-                                                    </option>
-                                                ))}
-                                    </select>
+                                            <select
+                                                value={selectedFestivo || ''}
+                                                onChange={(e) => setSelectedFestivo(e.target.value ? Number(e.target.value) : null)}
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                disabled={loading}
+                                            >
+                                                <option value="">Selecciona un festivo trabajado</option>
+                                                {festivosDisponibles.map((festivo) => {
+                                                    // ✅ CAMBIO: Parsear la fecha correctamente
+                                                    const fechaPartes = festivo.festivoTrabajado.split('-');
+                                                    const fecha = new Date(
+                                                        parseInt(fechaPartes[0]),
+                                                        parseInt(fechaPartes[1]) - 1,
+                                                        parseInt(fechaPartes[2])
+                                                    );
+
+                                                    return (
+                                                        <option key={festivo.id} value={festivo.id}>
+                                                            {fecha.toLocaleDateString('es-MX', {
+                                                                day: 'numeric',
+                                                                month: 'long',
+                                                                year: 'numeric',
+                                                                timeZone: 'UTC' // ✅ IMPORTANTE: Usar UTC para evitar cambios de zona horaria
+                                                            })}
+                                                            {' - '}
+                                                            {festivo.nombreEmpleado}
+                                                            {' ('}
+                                                            {festivo.diaSemana}
+                                                            {')'}
+                                                        </option>
+                                                    );
+                                                })}
+                                            </select>
                                 </div>
 
                                 <div className="mb-4 flex flex-col gap-2">

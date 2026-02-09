@@ -230,6 +230,12 @@ export const Reportes = () => {
         icon: FileText,
         title: "Reporte SAP Reprogramación (Nuevos)",
         subtitle: "Días que se agregarán a la nueva programación."
+    },
+    {
+    id: 14,
+    icon: FileText,
+    title: "Reporte SAP Permutas",
+    subtitle: "Días permutados con nueva regla de turno asignada."
     }
   ];
 
@@ -319,7 +325,34 @@ export const Reportes = () => {
                         : "No se pudo generar el reporte de faltantes de capturar vacaciones"
                 );
             }
-        } else if (reportId === 5) {
+        }
+        else if (reportId === 14) {
+            try {
+                if (!selectedYear) {
+                    toast.error("Selecciona el año para generar el reporte");
+                    return;
+                }
+
+                const loadingToast = toast.loading("Generando Reporte SAP Permutas...");
+
+                const areaIdFilter = selectedArea ? parseInt(selectedArea) : undefined;
+                const gruposRol = selectedGroups.length > 0 ? selectedGroups : undefined;
+
+                await reportesService.exportarReporteSAPPermutas({
+                    year: parseInt(selectedYear),
+                    areaId: areaIdFilter,
+                    gruposRol
+                });
+
+                toast.dismiss(loadingToast);
+                toast.success("Reporte SAP Permutas descargado exitosamente");
+            } catch (error) {
+                console.error("Error al descargar Reporte SAP Permutas:", error);
+                toast.dismiss();
+                toast.error(error instanceof Error ? error.message : "No se pudo generar el reporte");
+            }
+        }
+        else if (reportId === 5) {
             if (!selectedArea || selectedGroups.length === 0 || !selectedYear) {
                 toast.error("Por favor selecciona área, grupos y año para generar la constancia de antiguedad");
                 return;

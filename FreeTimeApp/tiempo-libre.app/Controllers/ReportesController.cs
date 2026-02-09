@@ -174,8 +174,28 @@ namespace tiempo_libre.Controllers
             return Ok(response);
         }
 
-
-
+        [HttpGet("reporte-sap-permutas")]
+        public async Task<IActionResult> ExportarReporteSapPermutas(
+        [FromQuery] int year,
+        [FromQuery] int? areaId = null,
+        [FromQuery] List<string>? gruposRol = null)
+        {
+            try
+            {
+                var (stream, fileName) = await _exportService.GenerarReporteSapPermutasAsync(year, areaId, gruposRol);
+                stream.Position = 0;
+                return File(stream, "text/plain", fileName);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new ApiResponse<object>(false, null, ex.Message));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al generar el reporte SAP de Permutas");
+                return StatusCode(500, new ApiResponse<object>(false, null, $"Error inesperado: {ex.Message}"));
+            }
+        }
 
     }
 }

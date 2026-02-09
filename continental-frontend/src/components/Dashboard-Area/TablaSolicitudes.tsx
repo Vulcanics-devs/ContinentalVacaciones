@@ -131,11 +131,13 @@ export function TablaSolicitudes() {
         }
     }, [location.state])
 
-    // Efecto para aplicar filtros (se ejecuta después de restaurar)
+    // Al inicio del componente, después de los estados
+    const abortControllerRef = useRef<AbortController | null>(null)
+
+    // Reemplaza el efecto de aplicar filtros por:
     useEffect(() => {
-        // Esperar a que se restauren los filtros si es necesario
-        if (lastFetchedFiltersRef.current === 'RESTORING') {
-            lastFetchedFiltersRef.current = ''
+        // Esperar a que se restauren los filtros y se cargue userData
+        if (lastFetchedFiltersRef.current === 'RESTORING' || loadingUserData || !userData) {
             return
         }
 
@@ -161,10 +163,29 @@ export function TablaSolicitudes() {
             return
         }
 
-        lastFetchedFiltersRef.current = filtersKey
-        console.log('TablaSolicitudes: Fetching with filters:', filters)
-        fetchSolicitudes(filters)
-    }, [selectedAreaId, estadoFilter, fetchSolicitudes])
+        // Cancelar petición anterior si existe
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort()
+        }
+
+        // Crear nuevo AbortController
+        abortControllerRef.current = new AbortController()
+
+        // Debounce de 300ms
+        const timeoutId = setTimeout(() => {
+            lastFetchedFiltersRef.current = filtersKey
+            console.log('TablaSolicitudes: Fetching with filters:', filters)
+            fetchSolicitudes(filters)
+        }, 300)
+
+        return () => {
+            clearTimeout(timeoutId)
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort()
+                abortControllerRef.current = null
+            }
+        }
+    }, [selectedAreaId, estadoFilter, fetchSolicitudes, loadingUserData, userData])
 
     // Efecto para mantener solicitudes ordenadas
     useEffect(() => {
@@ -179,12 +200,33 @@ export function TablaSolicitudes() {
     }, [solicitudes, sortDirection])
 
     // Limpiar el estado de navegación después de restaurar
+    // Efecto para restaurar filtros PRIMERO (antes de cualquier fetch)
     useEffect(() => {
-        if (filtersRestoredRef.current && location.state) {
-            const timer = setTimeout(() => {
-                window.history.replaceState({}, document.title)
-            }, 500)
-            return () => clearTimeout(timer)
+        if (filtersRestoredRef.current) return
+
+        const savedFilters = (location.state as any)?.filters
+
+        if (savedFilters) {
+            // Restaurar todos los filtros de forma síncrona
+            if (savedFilters.selectedAreaId) setSelectedAreaId(savedFilters.selectedAreaId)
+            if (savedFilters.estadoFilter) setEstadoFilter(savedFilters.estadoFilter)
+            if (savedFilters.query) setQuery(savedFilters.query)
+            if (savedFilters.sortDirection) setSortDirection(savedFilters.sortDirection)
+
+            filtersRestoredRef.current = true
+
+            // Marcar que se han restaurado los filtros para evitar fetch automático
+            lastFetchedFiltersRef.current = 'RESTORING'
+
+            // Resetear después de un pequeño delay
+            setTimeout(() => {
+                if (lastFetchedFiltersRef.current === 'RESTORING') {
+                    lastFetchedFiltersRef.current = ''
+                }
+            }, 100)
+        } else {
+            // Si no hay filtros guardados, marcar como restaurado para permitir fetch normal
+            filtersRestoredRef.current = true
         }
     }, [location.state])
 

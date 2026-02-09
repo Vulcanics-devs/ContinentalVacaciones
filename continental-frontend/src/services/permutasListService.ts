@@ -38,7 +38,7 @@ export const permutasListService = {
 
         if (filters?.anio) params.append('anio', filters.anio.toString());
         if (filters?.areaId) params.append('areaId', filters.areaId.toString());
-        if (filters?.estadoSolicitud) params.append('estado', filters.estadoSolicitud);
+        if (filters?.estadoSolicitud) params.append('estadoSolicitud', filters.estadoSolicitud);
 
         const url = `/api/permutas/listado${params.toString() ? `?${params.toString()}` : ''}`;
 
