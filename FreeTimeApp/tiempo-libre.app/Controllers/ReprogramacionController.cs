@@ -345,19 +345,21 @@ namespace tiempo_libre.Controllers
 
                 var request = new ConsultaSolicitudesRequest
                 {
-                    SolicitadoPorId = usuarioId,
-                    FechaNuevaDesde = anio.HasValue ? new DateOnly(anio.Value, 1, 1) : null,
-                    FechaNuevaHasta = anio.HasValue ? new DateOnly(anio.Value, 12, 31) : null
+                    // ❌ NO establecer SolicitadoPorId aquí - dejamos que el servicio lo maneje
+                    // El filtro de rol en ConsultarSolicitudesAsync ya maneja esto correctamente
                 };
 
                 if (anio.HasValue)
                 {
-                    request.FechaNuevaDesde = new DateOnly(anio.Value, 1, 1);
-                    request.FechaNuevaHasta = new DateOnly(anio.Value, 12, 31);
+                    // Filtrar por año de la SOLICITUD
+                    request.FechaDesde = new DateTime(anio.Value, 1, 1);
+                    request.FechaHasta = new DateTime(anio.Value, 12, 31, 23, 59, 59);
                 }
 
-                _logger.LogInformation("Usuario {UsuarioId} consultando solicitudes que creó", usuarioId);
+                _logger.LogInformation("Usuario {UserId} consultando solicitudes que creó (año: {Anio})",
+                    usuarioId, anio);
 
+                // El servicio aplicará automáticamente el filtro de delegado sindical
                 var response = await _reprogramacionService.ConsultarSolicitudesAsync(request, usuarioId);
 
                 if (!response.Success)

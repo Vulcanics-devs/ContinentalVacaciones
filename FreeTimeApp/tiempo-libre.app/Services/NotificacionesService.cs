@@ -410,9 +410,29 @@ namespace tiempo_libre.Services
                 }
                 else
                 {
-                    // Otros roles solo ven sus propias notificaciones
-                    query = _context.Notificaciones
-                        .Where(n => n.IdUsuarioReceptor == usuario.Id);
+                    // Otros roles (incluidos sindicalizados) ven sus propias notificaciones
+                    // Y también las notificaciones de solicitudes que ellos crearon (donde son emisores)
+                    var esDelegadoSindical = usuario.Roles.Any(r =>
+                        r.Name == "DelegadoSindical" ||
+                        r.Name == "Delegado Sindical" ||
+                        r.Name == "EmpleadoSindicalizado" ||
+                        r.Name == "Empleado Sindicalizado");
+
+                    if (esDelegadoSindical)
+                    {
+                        // Para delegados sindicales: ver notificaciones donde son receptores O emisores
+                        query = _context.Notificaciones
+                        .Where(n => n.IdUsuarioReceptor == usuario.Id ||
+                                   n.IdUsuarioEmisor == usuario.Id ||
+                                   (n.TipoDeNotificacion == TiposDeNotificacionEnum.SolicitudReprogramacion &&
+                                    n.IdUsuarioEmisor == null));
+                    }
+                    else
+                    {
+                        // Para otros roles: solo sus notificaciones como receptores
+                        query = _context.Notificaciones
+                            .Where(n => n.IdUsuarioReceptor == usuario.Id);
+                    }
                 }
 
                 // Aplicar filtros adicionales

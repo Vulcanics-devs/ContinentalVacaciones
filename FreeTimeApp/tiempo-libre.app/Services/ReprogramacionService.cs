@@ -430,7 +430,7 @@ namespace tiempo_libre.Services
         /// Consultar solicitudes de reprogramaciA3n con filtros.
         /// </summary>
         public async Task<ApiResponse<ListaSolicitudesReprogramacionResponse>> ConsultarSolicitudesAsync(
-            ConsultaSolicitudesRequest request, int usuarioConsultaId)
+    ConsultaSolicitudesRequest request, int usuarioConsultaId)
         {
             try
             {
@@ -444,8 +444,17 @@ namespace tiempo_libre.Services
                     return new ApiResponse<ListaSolicitudesReprogramacionResponse>(false, null, "Usuario no encontrado");
                 }
 
-                var esJefeArea = usuarioConsulta.Roles.Any(r => r.Name == "JefeArea" || r.Name == "Jefe De Area");
                 var esSuperUsuario = usuarioConsulta.Roles.Any(r => r.Name == "SuperUsuario");
+                var esJefeArea = usuarioConsulta.Roles.Any(r => r.Name == "JefeArea" || r.Name == "Jefe De Area");
+                var esDelegadoSindical = usuarioConsulta.Roles.Any(r =>
+                    r.Name == "DelegadoSindical" ||
+                    r.Name == "Delegado Sindical" ||
+                    r.Name == "EmpleadoSindicalizado" ||
+                    r.Name == "Empleado Sindicalizado");
+
+                _logger.LogInformation(
+                    "Usuario {UserId} consultando solicitudes. Roles: SuperUsuario={Super}, JefeArea={Jefe}, Delegado={Delegado}",
+                    usuarioConsultaId, esSuperUsuario, esJefeArea, esDelegadoSindical);
 
                 var query = _db.SolicitudesReprogramacion
                     .Include(s => s.Empleado)
@@ -457,11 +466,31 @@ namespace tiempo_libre.Services
                     .Include(s => s.SolicitadoPor)
                     .AsQueryable();
 
-                if (esJefeArea && !esSuperUsuario && usuarioConsulta.AreaId.HasValue)
+                // FILTROS DE ROL
+                if (esSuperUsuario)
+                {
+                    _logger.LogInformation("SuperUsuario - sin filtros de rol");
+                }
+                else if (esJefeArea && usuarioConsulta.AreaId.HasValue)
                 {
                     query = query.Where(s => s.Empleado.Grupo.Area.AreaId == usuarioConsulta.AreaId.Value);
+                    _logger.LogInformation("Jefe de Área - filtrando por área {AreaId}", usuarioConsulta.AreaId.Value);
+                }
+                else if (esDelegadoSindical)
+                {
+                    // 🔥 SOLUCIÓN: Usar !HasValue en lugar de comparar con null
+                    query = query.Where(s =>
+                        s.SolicitadoPorId == usuarioConsultaId ||
+                        !s.SolicitadoPorId.HasValue  // ← Esta es la clave
+                    );
+
+                    _logger.LogInformation(
+                        "Delegado Sindical {UserId} - filtrando por SolicitadoPorId = {UserId} OR NULL",
+                        usuarioConsultaId, usuarioConsultaId);
                 }
 
+                // FILTROS ADICIONALES DEL REQUEST
+                // FILTROS ADICIONALES DEL REQUEST
                 if (!string.IsNullOrEmpty(request.Estado))
                 {
                     query = query.Where(s => s.EstadoSolicitud == request.Estado);
@@ -472,8 +501,15 @@ namespace tiempo_libre.Services
                     query = query.Where(s => s.EmpleadoId == request.EmpleadoId.Value);
                 }
 
-                if (request.SolicitadoPorId.HasValue)
+                // 🔥 MODIFICACIÓN CRÍTICA: Solo aplicar este filtro si NO es delegado sindical
+                // O si el valor solicitado NO es el mismo que el usuario consultando
+                if (request.SolicitadoPorId.HasValue && !esDelegadoSindical)
                 {
+                    query = query.Where(s => s.SolicitadoPorId == request.SolicitadoPorId.Value);
+                }
+                else if (request.SolicitadoPorId.HasValue && esDelegadoSindical && request.SolicitadoPorId.Value != usuarioConsultaId)
+                {
+                    // Si es delegado pero está filtrando por OTRO usuario, aplicar el filtro
                     query = query.Where(s => s.SolicitadoPorId == request.SolicitadoPorId.Value);
                 }
 
@@ -511,6 +547,13 @@ namespace tiempo_libre.Services
                 var solicitudes = await query
                     .OrderByDescending(s => s.FechaSolicitud)
                     .ToListAsync();
+
+                _logger.LogInformation(
+                    "Total solicitudes encontradas: {Total} (ConID: {ConID}, SinID: {SinID})",
+                    solicitudes.Count,
+                    solicitudes.Count(s => s.SolicitadoPorId.HasValue),
+                    solicitudes.Count(s => !s.SolicitadoPorId.HasValue)
+                );
 
                 var solicitudesDto = solicitudes.Select(s => new SolicitudReprogramacionDto
                 {
@@ -554,7 +597,7 @@ namespace tiempo_libre.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error al consultar solicitudes de reprogramaciA3n");
+                _logger.LogError(ex, "Error al consultar solicitudes de reprogramación");
                 return new ApiResponse<ListaSolicitudesReprogramacionResponse>(false, null,
                     $"Error inesperado: {ex.Message}");
             }

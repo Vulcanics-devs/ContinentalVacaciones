@@ -132,34 +132,34 @@ class FestivosTrabajadosService {
   /**
    * Obtiene festivos trabajados disponibles para intercambiar
    */
-  async getFestivosDisponibles(
-    empleadoId?: number,
-    nomina?: number,
-    anio?: number,
-    soloDisponibles: boolean = true
-  ): Promise<FestivosDisponiblesResponse> {
-    try {
-      const params = new URLSearchParams()
-      
-      if (empleadoId) params.append('empleadoId', empleadoId.toString())
-      if (nomina) params.append('nomina', nomina.toString())
-      if (anio) params.append('anio', anio.toString())
-      params.append('soloDisponibles', soloDisponibles.toString())
+    async getFestivosDisponibles(
+        empleadoId?: number,
+        nomina?: number,
+        anio?: number,
+        soloDisponibles: boolean = true
+    ): Promise<FestivosDisponiblesResponse> {
+        try {
+            const params = new URLSearchParams()
 
-      const response = await httpClient.get<ApiResponse<FestivosDisponiblesResponse>>(
-        `${this.baseUrl}/disponibles?${params.toString()}`
-      )
+            if (empleadoId) params.append('empleadoId', empleadoId.toString())
+            if (nomina) params.append('nomina', nomina.toString())
+            if (anio) params.append('anio', anio.toString())
+            params.append('soloDisponibles', soloDisponibles.toString())
 
-      if (response.success && response.data) {
-        return response.data as unknown as FestivosDisponiblesResponse
-      }
+            const response = await httpClient.get<ApiResponse<FestivosDisponiblesResponse>>(
+                `${this.baseUrl}/disponibles?${params.toString()}`
+            )
 
-      throw new Error(response.errorMsg || 'Error al obtener festivos disponibles')
-    } catch (error) {
-      console.error('Error fetching festivos disponibles:', error)
-      throw error
+            if (response.success && response.data) {
+                return response.data as unknown as FestivosDisponiblesResponse
+            }
+
+            throw new Error(response.errorMsg || 'Error al obtener festivos disponibles')
+        } catch (error) {
+            console.error('Error fetching festivos disponibles:', error)
+            throw error
+        }
     }
-  }
 
   /**
    * Solicita el intercambio de un festivo trabajado por un día de vacaciones

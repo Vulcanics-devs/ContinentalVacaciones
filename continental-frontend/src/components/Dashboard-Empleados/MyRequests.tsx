@@ -8,6 +8,7 @@ import {
     XCircle,
     AlertCircle,
     Download,
+    Search,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
@@ -42,6 +43,7 @@ export interface VacationRequest {
     employeeName?: string;
     employeeArea?: string;
     employeeGroup?: string;
+    employeeNomina?: string; // 🆕 Agregado
     requester?: string | null;
     reviewer?: string | null;
 }
@@ -54,27 +56,27 @@ const mapSolicitudToRequest = (solicitud: SolicitudReprogramacion): VacationRequ
 
     return {
         id: solicitud.id.toString(),
-        type: "day_exchange", // Las solicitudes de reprogramación son intercambios de Días
+        type: "day_exchange",
         requestDate: solicitud.fechaSolicitud,
         responseDate: solicitud.fechaAprobacion || undefined,
         status,
         rejectionReason: solicitud.motivoRechazo || undefined,
-        requestedDay: solicitud.fechaNueva, // Nueva fecha solicitada
-        dayToGive: solicitud.fechaOriginal, // Fecha original que se cambia
+        requestedDay: solicitud.fechaNueva,
+        dayToGive: solicitud.fechaOriginal,
         employeeName: solicitud.nombreEmpleado,
         employeeArea: solicitud.areaEmpleado,
         employeeGroup: solicitud.grupoEmpleado,
+        employeeNomina: solicitud.nominaEmpleado, // 🆕 Agregado
         requester: solicitud.solicitadoPor || null,
         reviewer: solicitud.aprobadoPor || null
     };
 };
 
-// Función para mapear SolicitudFestivoTrabajado a VacationRequest
-// Función para mapear SolicitudFestivoTrabajado a VacationRequest
 const mapFestivoToRequest = (
     solicitud: SolicitudFestivoTrabajado,
     fallbackArea?: string,
-    fallbackGroup?: string
+    fallbackGroup?: string,
+    fallbackNomina?: string // 🆕 Agregado
 ): VacationRequest => {
     const festivoData = solicitud as any;
     const status: RequestStatus =
@@ -83,16 +85,17 @@ const mapFestivoToRequest = (
 
     return {
         id: solicitud.id.toString(),
-        type: "holiday_worked", // Festivos trabajados
+        type: "holiday_worked",
         requestDate: solicitud.fechaSolicitud,
         responseDate: solicitud.fechaAprobacion || undefined,
         status,
-        rejectionReason: undefined, // Los festivos no tienen campo motivoRechazo en la interface actual
-        requestedDay: solicitud.fechaNueva, // Nueva fecha de vacación
-        workedHoliday: solicitud.festivoOriginal, // Festivo trabajado original
+        rejectionReason: undefined,
+        requestedDay: solicitud.fechaNueva,
+        workedHoliday: solicitud.festivoOriginal,
         employeeName: festivoData.nombreEmpleado || solicitud.nombreEmpleado,
         employeeArea: fallbackArea,
         employeeGroup: fallbackGroup,
+        employeeNomina: fallbackNomina, // 🆕 Agregado
         requester: festivoData.solicitadoPor || null,
         reviewer: solicitud.aprobadoPor || festivoData.aprobadoPor || null,
     };
@@ -115,6 +118,7 @@ const mapPermisoToRequest = (solicitud: SolicitudPermisoDto): VacationRequest =>
         employeeName: solicitud.nombreEmpleado,
         employeeArea: undefined,
         employeeGroup: undefined,
+        employeeNomina: undefined, // 🆕 Agregado
         requester: solicitud.delegadoNombre,
         reviewer: solicitud.jefeAreaNombre || null
     };
@@ -125,7 +129,6 @@ const MyRequests = () => {
     const { user } = useAuth();
     const { currentPeriod } = useVacationConfig();
 
-    // Cargar empleado seleccionado desde localStorage
     const [selectedEmployee] = useState<UsuarioInfoDto | null>(() => {
         const saved = localStorage.getItem('selectedEmployee');
         if (saved) {
@@ -139,7 +142,6 @@ const MyRequests = () => {
         return null;
     });
 
-    // Obtener el empleado actual (selectedEmployee si está seleccionado, sino el usuario actual)
     const currentEmployee = selectedEmployee || (user as unknown as UsuarioInfoDto);
     const hasRole = (roleName: string) => {
         return (user?.roles || []).some((role) => {
@@ -152,7 +154,6 @@ const MyRequests = () => {
     const isUnionCommittee = Boolean((user as any)?.isUnionCommittee);
     const isDelegadoSindical = isUnionCommittee || hasRole(UserRole.UNION_REPRESENTATIVE) || user?.area?.nombreGeneral === 'Sindicato';
 
-    // Estados para datos reales
     const [requests, setRequests] = useState<VacationRequest[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -164,12 +165,16 @@ const MyRequests = () => {
         rechazadas: number;
     }>({ total: 0, pendientes: 0, aprobadas: 0, rechazadas: 0 });
 
-    // Estados existentes
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 5;
     const [statusFilter, setStatusFilter] = useState<"all" | RequestStatus>("all");
     const [typeFilter, setTypeFilter] = useState<"all" | RequestType>("all");
     const [yearFilter, setYearFilter] = useState<number>(new Date().getFullYear());
+
+    // 🆕 Nuevos filtros
+    const [requesterFilter, setRequesterFilter] = useState<"all" | "sistema" | "delegado">("all");
+    const [nominaSearch, setNominaSearch] = useState("");
+
     const [exportOpen, setExportOpen] = useState(false);
 
     // Cargar datos reales
@@ -204,7 +209,6 @@ const MyRequests = () => {
                     }
                 } catch (err) {
                     console.error('Error al cargar historial de reprogramaciones:', err);
-                    // No hacer throw, continuar para intentar cargar festivos
                 }
 
                 // Cargar festivos trabajados
@@ -216,13 +220,17 @@ const MyRequests = () => {
                             yearFilter
                         );
                         festivosRequests = (historialFestivos?.solicitudes ?? []).map((s) =>
-                            mapFestivoToRequest(s, currentEmployee?.area?.nombreGeneral, currentEmployee?.grupo?.rol)
+                            mapFestivoToRequest(
+                                s,
+                                currentEmployee?.area?.nombreGeneral,
+                                currentEmployee?.grupo?.rol,
+                                currentEmployee?.nomina // 🆕 Agregado
+                            )
                         );
                         console.log('✅ Historial festivos:', historialFestivos);
                     }
                 } catch (err) {
                     console.error('Error al cargar historial de festivos trabajados:', err);
-                    // No hacer throw, continuar con lo que tengamos
                 }
 
                 // Cargar solicitudes de permisos
@@ -240,7 +248,6 @@ const MyRequests = () => {
                     console.error('Error al cargar historial de permisos:', err);
                 }
 
-                // Combinar y ordenar todas las solicitudes
                 const allRequests = [...reprogramacionesRequests, ...festivosRequests, ...permisosRequests];
                 allRequests.sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
 
@@ -259,10 +266,24 @@ const MyRequests = () => {
         loadRequests();
     }, [currentEmployee?.id, yearFilter, isDelegadoSindical, user?.id]);
 
+    // 🆕 Filtrado mejorado con nuevos filtros
     const filteredRequests = requests.filter((r) => {
         const byStatus = statusFilter === "all" || r.status === statusFilter;
         const byType = typeFilter === "all" || r.type === typeFilter;
-        return byStatus && byType;
+
+        // 🆕 Filtro por solicitante
+        let byRequester = true;
+        if (requesterFilter === "sistema") {
+            byRequester = !r.requester || r.requester.toLowerCase().includes("sistema");
+        } else if (requesterFilter === "delegado") {
+            byRequester = r.requester && !r.requester.toLowerCase().includes("sistema");
+        }
+
+        // 🆕 Filtro por nómina
+        const byNomina = !nominaSearch ||
+            (r.employeeNomina && r.employeeNomina.toLowerCase().includes(nominaSearch.toLowerCase()));
+
+        return byStatus && byType && byRequester && byNomina;
     });
 
     const exportMeta = {
@@ -273,6 +294,8 @@ const MyRequests = () => {
         filtros: {
             tipo: typeFilter === 'all' ? 'Todos' : getRequestTypeText(typeFilter),
             estado: statusFilter === 'all' ? 'Todos' : getStatusText(statusFilter),
+            solicitante: requesterFilter === 'all' ? 'Todos' : requesterFilter === 'sistema' ? 'Sistema' : 'Delegado Sindical', // 🆕
+            nomina: nominaSearch || 'Todas', // 🆕
         },
     };
 
@@ -304,10 +327,9 @@ const MyRequests = () => {
     };
 
     const handleExportPDF = () => {
-        // El componente PDFDownloadLink maneja la descarga automáticamente
         setExportOpen(false);
     };
-    
+
     return (
         <div className="flex flex-col min-h-screen w-full bg-white p-12 max-w-[2000px] mx-auto">
             <header className="flex justify-between">
@@ -323,8 +345,8 @@ const MyRequests = () => {
                     </h1>
                     <p className="text-slate-600">
                         {isDelegadoSindical
-                            ? "Historial de reprogramaciones que generaste para companeros sindicalizados"
-                            : "Gestiona tus solicitudes aqui"}
+                            ? "Historial de reprogramaciones que generaste para compañeros sindicalizados"
+                            : "Gestiona tus solicitudes aquí"}
                     </p>
                 </div>
                 <NavbarUser />
@@ -333,104 +355,145 @@ const MyRequests = () => {
             <div className="mt-8 flex-1 flex flex-col">
                 {/* Barra de filtros y exportación */}
                 <div className="w-full max-w-7xl mx-auto mb-4">
-                    <div className="flex flex-col md:flex-row gap-3 md:items-end md:justify-between">
-                        <div className="flex flex-col sm:flex-row gap-3">
-                            <div className="flex flex-col">
-                                <label className="text-sm text-slate-600 mb-1">Estatus</label>
-                                <select
-                                    value={statusFilter}
-                                    onChange={(e) => {
-                                        setStatusFilter(e.target.value as any);
-                                        setCurrentPage(1);
-                                    }}
-                                    className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                >
-                                    <option value="all">Todos</option>
-                                    <option value="approved">Aprobada</option>
-                                    <option value="rejected">Rechazada</option>
-                                    <option value="pending">Pendiente</option>
-                                </select>
-                            </div>
-
-                            <div className="flex flex-col">
-                                <label className="text-sm text-slate-600 mb-1">Tipo</label>
-                                <select
-                                    value={typeFilter}
-                                    onChange={(e) => {
-                                        setTypeFilter(e.target.value as any);
-                                        setCurrentPage(1);
-                                    }}
-                                    className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                >
-                                    <option value="all">Todos</option>
-                                    <option value="day_exchange">Reprogramación de Vacaciones</option>
-                                    <option value="holiday_worked">Festivo Trabajado</option>
-                                    <option value="permission_request">Permiso/Incapacidad</option>
-                                </select>
-                            </div>
-
-                            <div className="flex flex-col">
-                                <label className="text-sm text-slate-600 mb-1">Año</label>
-                                <select
-                                    value={yearFilter}
-                                    onChange={(e) => {
-                                        setYearFilter(parseInt(e.target.value));
-                                        setCurrentPage(1);
-                                    }}
-                                    className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                >
-                                    {Array.from({ length: 5 }, (_, i) => {
-                                        const year = new Date().getFullYear() - 2 + i;
-                                        return (
-                                            <option key={year} value={year}>
-                                                {year}
-                                            </option>
-                                        );
-                                    })}
-                                </select>
-                            </div>
-                        </div>
-
-                        <div className="relative flex gap-2">
-                            <Button
-                                onClick={() => setExportOpen((v) => !v)}
-                                className="inline-flex cursor-pointer items-center gap-2 "
-                                variant="continental"
-                                title="Exportar"
-                            >
-                                <Download className="w-4 h-4" />
-                                Exportar
-                            </Button>
-
-                            {exportOpen && (
-                                <div className="absolute right-0 mt-10 w-56 bg-white border border-gray-200 rounded-md shadow-lg z-10">
-                                    <button
-                                        className="w-full cursor-pointer text-left px-4 py-2 text-sm hover:bg-gray-50"
-                                        onClick={handleExportExcel}
+                    <div className="flex flex-col gap-4">
+                        {/* Primera fila de filtros */}
+                        <div className="flex flex-col md:flex-row gap-3 md:items-end md:justify-between">
+                            <div className="flex flex-col sm:flex-row gap-3">
+                                <div className="flex flex-col">
+                                    <label className="text-sm text-slate-600 mb-1">Estatus</label>
+                                    <select
+                                        value={statusFilter}
+                                        onChange={(e) => {
+                                            setStatusFilter(e.target.value as any);
+                                            setCurrentPage(1);
+                                        }}
+                                        className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                                     >
-                                        Excel (.xlsx)
-                                    </button>
-                                    <button
-                                        className="w-full cursor-pointer text-left px-4 py-2 text-sm hover:bg-gray-50"
-                                        onClick={handleExportCSV}
-                                    >
-                                        CSV
-                                    </button>
-                                    <SolicitudesPDFDownloadLink
-                                        solicitudes={filteredRequests}
-                                        empleadoNombre={currentEmployee?.fullName || currentEmployee?.username || 'Empleado'}
-                                        className="w-full cursor-pointer text-left px-4 py-2 text-sm hover:bg-gray-50 block"
-                                    >
-                                        <button
-                                            className="w-full text-left"
-                                            onClick={handleExportPDF}
-                                        >
-                                            PDF
-                                        </button>
-                                    </SolicitudesPDFDownloadLink>
+                                        <option value="all">Todos</option>
+                                        <option value="approved">Aprobada</option>
+                                        <option value="rejected">Rechazada</option>
+                                        <option value="pending">Pendiente</option>
+                                    </select>
                                 </div>
-                            )}
+
+                                <div className="flex flex-col">
+                                    <label className="text-sm text-slate-600 mb-1">Tipo</label>
+                                    <select
+                                        value={typeFilter}
+                                        onChange={(e) => {
+                                            setTypeFilter(e.target.value as any);
+                                            setCurrentPage(1);
+                                        }}
+                                        className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    >
+                                        <option value="all">Todos</option>
+                                        <option value="day_exchange">Reprogramación de Vacaciones</option>
+                                        <option value="holiday_worked">Festivo Trabajado</option>
+                                        <option value="permission_request">Permiso/Incapacidad</option>
+                                    </select>
+                                </div>
+
+                                <div className="flex flex-col">
+                                    <label className="text-sm text-slate-600 mb-1">Año</label>
+                                    <select
+                                        value={yearFilter}
+                                        onChange={(e) => {
+                                            setYearFilter(parseInt(e.target.value));
+                                            setCurrentPage(1);
+                                        }}
+                                        className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    >
+                                        {Array.from({ length: 5 }, (_, i) => {
+                                            const year = new Date().getFullYear() - 2 + i;
+                                            return (
+                                                <option key={year} value={year}>
+                                                    {year}
+                                                </option>
+                                            );
+                                        })}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="relative flex gap-2">
+                                <Button
+                                    onClick={() => setExportOpen((v) => !v)}
+                                    className="inline-flex cursor-pointer items-center gap-2"
+                                    variant="continental"
+                                    title="Exportar"
+                                >
+                                    <Download className="w-4 h-4" />
+                                    Exportar
+                                </Button>
+
+                                {exportOpen && (
+                                    <div className="absolute right-0 mt-10 w-56 bg-white border border-gray-200 rounded-md shadow-lg z-10">
+                                        <button
+                                            className="w-full cursor-pointer text-left px-4 py-2 text-sm hover:bg-gray-50"
+                                            onClick={handleExportExcel}
+                                        >
+                                            Excel (.xlsx)
+                                        </button>
+                                        <button
+                                            className="w-full cursor-pointer text-left px-4 py-2 text-sm hover:bg-gray-50"
+                                            onClick={handleExportCSV}
+                                        >
+                                            CSV
+                                        </button>
+                                        <SolicitudesPDFDownloadLink
+                                            solicitudes={filteredRequests}
+                                            empleadoNombre={currentEmployee?.fullName || currentEmployee?.username || 'Empleado'}
+                                            className="w-full cursor-pointer text-left px-4 py-2 text-sm hover:bg-gray-50 block"
+                                        >
+                                            <button
+                                                className="w-full text-left"
+                                                onClick={handleExportPDF}
+                                            >
+                                                PDF
+                                            </button>
+                                        </SolicitudesPDFDownloadLink>
+                                    </div>
+                                )}
+                            </div>
                         </div>
+
+                        {/* 🆕 Segunda fila de filtros (nuevos) */}
+                        {isDelegadoSindical && (
+                            <div className="flex flex-col sm:flex-row gap-3">
+                                <div className="flex flex-col">
+                                    <label className="text-sm text-slate-600 mb-1">Solicitado por</label>
+                                    <select
+                                        value={requesterFilter}
+                                        onChange={(e) => {
+                                            setRequesterFilter(e.target.value as any);
+                                            setCurrentPage(1);
+                                        }}
+                                        className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[200px]"
+                                    >
+                                        <option value="all">Todos</option>
+                                        <option value="sistema">Sistema</option>
+                                        <option value="delegado">Delegado Sindical</option>
+                                    </select>
+                                </div>
+
+                                <div className="flex flex-col flex-1">
+                                    <label className="text-sm text-slate-600 mb-1">Buscar por nómina</label>
+                                    <div className="relative">
+                                        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                                        <input
+                                            type="text"
+                                            value={nominaSearch}
+                                            onChange={(e) => {
+                                                setNominaSearch(e.target.value);
+                                                setCurrentPage(1);
+                                            }}
+                                            placeholder="Ingresa número de nómina..."
+                                            className="pl-9 pr-3 py-2 border border-gray-300 rounded-md text-sm w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -461,6 +524,17 @@ const MyRequests = () => {
                                             <span className="text-sm font-medium text-gray-700">
                                                 {getRequestTypeText(request.type)}
                                             </span>
+                                            {/* 🆕 Badge para Sistema/Delegado */}
+                                            {isDelegadoSindical && (
+                                                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${!request.requester || request.requester.toLowerCase().includes("sistema")
+                                                        ? "bg-gray-100 text-gray-700"
+                                                        : "bg-blue-100 text-blue-700"
+                                                    }`}>
+                                                    {!request.requester || request.requester.toLowerCase().includes("sistema")
+                                                        ? "Sistema"
+                                                        : "Delegado"}
+                                                </span>
+                                            )}
                                         </div>
 
                                         {/* Header de la tarjeta */}
@@ -486,6 +560,12 @@ const MyRequests = () => {
                                                     <p className="font-medium text-gray-800">Empleado destino</p>
                                                     <p className="text-gray-700">{request.employeeName}</p>
                                                     <p className="text-xs text-gray-500">
+                                                        {/* 🆕 Mostrar nómina */}
+                                                        {request.employeeNomina && (
+                                                            <span className="font-mono bg-gray-100 px-1.5 py-0.5 rounded mr-2">
+                                                                #{request.employeeNomina}
+                                                            </span>
+                                                        )}
                                                         {request.employeeArea || "Área no especificada"} · {request.employeeGroup || "Grupo no especificado"}
                                                     </p>
                                                 </div>
@@ -638,8 +718,8 @@ const MyRequests = () => {
                                             key={page}
                                             onClick={() => setCurrentPage(page)}
                                             className={`px-3 py-2 text-sm font-medium rounded-md ${currentPage === page
-                                                    ? "bg-blue-600 text-white"
-                                                    : "text-gray-500 bg-white border border-gray-300 hover:bg-gray-50"
+                                                ? "bg-blue-600 text-white"
+                                                : "text-gray-500 bg-white border border-gray-300 hover:bg-gray-50"
                                                 }`}
                                         >
                                             {page}

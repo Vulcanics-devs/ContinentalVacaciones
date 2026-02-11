@@ -509,13 +509,16 @@ namespace tiempo_libre.Services
             {
                 // ✅ Obtener días inhábiles por ley
                 var query = _db.DiasInhabiles
-                    .Where(d => d.TipoActividadDelDia == TipoActividadDelDiaEnum.InhabilPorLey)
+                    .Where(d => d.TipoActividadDelDia == TipoActividadDelDiaEnum.InhabilPorLey ||
+                                d.TipoActividadDelDia == TipoActividadDelDiaEnum.InhabilPorContinental)
+                    .AsNoTracking()
                     .AsQueryable();
 
                 // Filtrar por año si se especifica
                 if (request.Anio.HasValue)
                 {
                     query = query.Where(d => d.Fecha.Year == request.Anio.Value);
+                    _logger.LogInformation($"🔍 Filtrando por año: {request.Anio.Value}");
                 }
                 else
                 {
@@ -524,9 +527,11 @@ namespace tiempo_libre.Services
                     query = query.Where(d => d.Fecha.Year == currentYear);
                 }
 
+                _logger.LogInformation($"🔍 Query SQL: {query.ToQueryString()}");
                 // ✅ CAMBIO CRÍTICO: NO agrupar - obtener TODOS los días
                 var diasInhabiles = await query
                     .OrderBy(d => d.Fecha)
+                    .Select(d => new { d.Id, d.Fecha, d.Detalles, d.TipoActividadDelDia })
                     .ToListAsync();
 
                 _logger.LogInformation($"📅 Días inhábiles encontrados en BD: {diasInhabiles.Count}");
@@ -534,19 +539,25 @@ namespace tiempo_libre.Services
                 var festivosDto = new List<FestivoTrabajadoDto>();
                 var culture = new CultureInfo("es-ES");
 
+                Dictionary<DateOnly, bool> solicitudesDict = new Dictionary<DateOnly, bool>();
+                if (request.EmpleadoId.HasValue)
+                {
+                    var solicitudesExistentes = await _db.SolicitudesFestivosTrabajados
+                        .Where(s => s.EmpleadoId == request.EmpleadoId.Value &&
+                                   (s.EstadoSolicitud == "Pendiente" || s.EstadoSolicitud == "Aprobada"))
+                        .Select(s => s.FestivoOriginal)
+                        .ToListAsync();
+
+                    foreach (var fecha in solicitudesExistentes)
+                    {
+                        solicitudesDict[fecha] = true;
+                    }
+                }
+
                 // ✅ Iterar sobre TODOS los días sin agrupar
                 foreach (var diaInhabil in diasInhabiles)
                 {
-                    var yaSolicitado = false;
-
-                    if (request.EmpleadoId.HasValue)
-                    {
-                        yaSolicitado = await _db.SolicitudesFestivosTrabajados
-                            .AnyAsync(s =>
-                                s.EmpleadoId == request.EmpleadoId.Value &&
-                                s.FestivoOriginal == diaInhabil.Fecha &&
-                                (s.EstadoSolicitud == "Pendiente" || s.EstadoSolicitud == "Aprobada"));
-                    }
+                    var yaSolicitado = solicitudesDict.ContainsKey(diaInhabil.Fecha);
 
                     var dto = new FestivoTrabajadoDto
                     {
