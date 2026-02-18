@@ -228,7 +228,7 @@ namespace tiempo_libre.Services
                 {
                     _context.Empleados.RemoveRange(empleadosAEliminar);
                     empleadosEliminados = empleadosAEliminar.Count;
-                    _logger.LogInformation($"🗑️ Eliminados {empleadosEliminados} empleados inactivos");
+                    _logger.LogInformation($"🗑️ Marcados para eliminar {empleadosEliminados} empleados inactivos");
                 }
 
                 // Buscar el rol Empleado_Sindicalizado
@@ -246,12 +246,141 @@ namespace tiempo_libre.Services
 
                     if (usuariosAEliminar.Any())
                     {
+                        // ✅ PASO CRÍTICO: Eliminar primero las relaciones/datos dependientes
+                        foreach (var usuario in usuariosAEliminar)
+                        {
+
+                            // 1. Eliminar Notificaciones (tanto como emisor como receptor) ⭐ NUEVO
+                            var notificacionesComoEmisor = await _context.Notificaciones
+                                .Where(n => n.IdUsuarioEmisor == usuario.Id)
+                                .ToListAsync();
+                            if (notificacionesComoEmisor.Any())
+                            {
+                                _context.Notificaciones.RemoveRange(notificacionesComoEmisor);
+                                _logger.LogInformation($"🗑️ Eliminando {notificacionesComoEmisor.Count} notificaciones como emisor del usuario {usuario.Nomina}");
+                            }
+
+                            var notificacionesComoReceptor = await _context.Notificaciones
+                                .Where(n => n.IdUsuarioReceptor == usuario.Id)
+                                .ToListAsync();
+                            if (notificacionesComoReceptor.Any())
+                            {
+                                _context.Notificaciones.RemoveRange(notificacionesComoReceptor);
+                                _logger.LogInformation($"🗑️ Eliminando {notificacionesComoReceptor.Count} notificaciones como receptor del usuario {usuario.Nomina}");
+                            }
+
+                            // 1. Eliminar SolicitudesReprogramacion (PRIMERO - depende de VacacionesProgramadas)
+                            var solicitudesReprogramacion = await _context.SolicitudesReprogramacion
+                                .Where(sr => sr.EmpleadoId == usuario.Id)
+                                .ToListAsync();
+                            if (solicitudesReprogramacion.Any())
+                            {
+                                _context.SolicitudesReprogramacion.RemoveRange(solicitudesReprogramacion);
+                                _logger.LogInformation($"🗑️ Eliminando {solicitudesReprogramacion.Count} solicitudes de reprogramación del usuario {usuario.Nomina}");
+                            }
+
+                            // 2. Eliminar SolicitudesFestivosTrabajados
+                            var solicitudesFestivos = await _context.SolicitudesFestivosTrabajados
+                                .Where(sf => sf.EmpleadoId == usuario.Id)
+                                .ToListAsync();
+                            if (solicitudesFestivos.Any())
+                            {
+                                _context.SolicitudesFestivosTrabajados.RemoveRange(solicitudesFestivos);
+                                _logger.LogInformation($"🗑️ Eliminando {solicitudesFestivos.Count} solicitudes de festivos del usuario {usuario.Nomina}");
+                            }
+
+                            // 3. Eliminar AsignacionesBloque ⭐ NUEVO
+                            var asignacionesBloque = await _context.AsignacionesBloque
+                                .Where(ab => ab.EmpleadoId == usuario.Id)
+                                .ToListAsync();
+                            if (asignacionesBloque.Any())
+                            {
+                                _context.AsignacionesBloque.RemoveRange(asignacionesBloque);
+                                _logger.LogInformation($"🗑️ Eliminando {asignacionesBloque.Count} asignaciones de bloque del usuario {usuario.Nomina}");
+                            }
+
+                            // 3.1 Eliminar CambiosBloque ⭐ NUEVO
+                            var cambiosBloque = await _context.CambiosBloque
+                                .Where(cb => cb.EmpleadoId == usuario.Id)
+                                .ToListAsync();
+                            if (cambiosBloque.Any())
+                            {
+                                _context.CambiosBloque.RemoveRange(cambiosBloque);
+                                _logger.LogInformation($"🗑️ Eliminando {cambiosBloque.Count} cambios de bloque del usuario {usuario.Nomina}");
+                            }
+
+                            // 4. Eliminar VacacionesProgramadas
+                            var vacaciones = await _context.VacacionesProgramadas
+                                .Where(v => v.EmpleadoId == usuario.Id)
+                                .ToListAsync();
+                            if (vacaciones.Any())
+                            {
+                                _context.VacacionesProgramadas.RemoveRange(vacaciones);
+                                _logger.LogInformation($"🗑️ Eliminando {vacaciones.Count} vacaciones programadas del usuario {usuario.Nomina}");
+                            }
+
+                            // 5. Eliminar DiasCalendarioEmpleado
+                            var diasCalendario = await _context.DiasCalendarioEmpleado
+                                .Where(d => d.IdUsuarioEmpleadoSindicalizado == usuario.Id)
+                                .ToListAsync();
+                            if (diasCalendario.Any())
+                            {
+                                _context.DiasCalendarioEmpleado.RemoveRange(diasCalendario);
+                                _logger.LogInformation($"🗑️ Eliminando {diasCalendario.Count} días de calendario del usuario {usuario.Nomina}");
+                            }
+
+                            // 6. Eliminar CalendarioEmpleado
+                            var calendarios = await _context.CalendarioEmpleados
+                                .Where(c => c.IdUsuarioEmpleadoSindicalizado == usuario.Id)
+                                .ToListAsync();
+                            if (calendarios.Any())
+                            {
+                                _context.CalendarioEmpleados.RemoveRange(calendarios);
+                                _logger.LogInformation($"🗑️ Eliminando {calendarios.Count} calendarios del usuario {usuario.Nomina}");
+                            }
+
+                            // 7. Eliminar DiasFestivosTrabajados
+                            var festivosTrabajados = await _context.DiasFestivosTrabajados
+                                .Where(d => d.IdUsuarioEmpleadoSindicalizado == usuario.Id)
+                                .ToListAsync();
+                            if (festivosTrabajados.Any())
+                            {
+                                _context.DiasFestivosTrabajados.RemoveRange(festivosTrabajados);
+                                _logger.LogInformation($"🗑️ Eliminando {festivosTrabajados.Count} festivos trabajados del usuario {usuario.Nomina}");
+                            }
+
+                            // 8. Eliminar ReservacionesDeVacacionesPorEmpleado
+                            var reservaciones = await _context.ReservacionesDeVacacionesPorEmpleado
+                                .Where(r => r.IdEmpleadoSindicalizado == usuario.Id)
+                                .ToListAsync();
+                            if (reservaciones.Any())
+                            {
+                                _context.ReservacionesDeVacacionesPorEmpleado.RemoveRange(reservaciones);
+                                _logger.LogInformation($"🗑️ Eliminando {reservaciones.Count} reservaciones del usuario {usuario.Nomina}");
+                            }
+
+                            // 9. Eliminar EmpleadosXBloquesDeTurnos
+                            var bloquesTurnos = await _context.EmpleadosXBloquesDeTurnos
+                                .Where(e => e.IdEmpleadoSindicalAgendara == usuario.Id)
+                                .ToListAsync();
+                            if (bloquesTurnos.Any())
+                            {
+                                _context.EmpleadosXBloquesDeTurnos.RemoveRange(bloquesTurnos);
+                                _logger.LogInformation($"🗑️ Eliminando {bloquesTurnos.Count} bloques de turnos del usuario {usuario.Nomina}");
+                            }
+                        }
+
+                        // Guardar cambios de eliminación de dependencias
+                        await _context.SaveChangesAsync();
+
+                        // Ahora sí eliminar los usuarios
                         _context.Users.RemoveRange(usuariosAEliminar);
                         usuariosEliminados = usuariosAEliminar.Count;
-                        _logger.LogInformation($"🗑️ Eliminados {usuariosEliminados} usuarios sindicalizados inactivos");
+                        _logger.LogInformation($"🗑️ Marcados para eliminar {usuariosEliminados} usuarios sindicalizados inactivos");
                     }
                 }
 
+                // Guardar cambios finales
                 await _context.SaveChangesAsync();
 
                 _logger.LogInformation($"✅ Limpieza completada. Empleados: {empleadosEliminados}, Usuarios: {usuariosEliminados}");

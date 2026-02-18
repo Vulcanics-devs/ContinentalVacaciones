@@ -55,6 +55,7 @@ public partial class FreeTimeDbContext : DbContext
     public virtual DbSet<VacacionesProgramadas> VacacionesProgramadas { get; set; }
     public virtual DbSet<SolicitudesReprogramacion> SolicitudesReprogramacion { get; set; }
     public virtual DbSet<SolicitudesFestivosTrabajados> SolicitudesFestivosTrabajados { get; set; }
+    public virtual DbSet<FestivosEmpleadosTrabajadosUpload> FestivosEmpleadosTrabajadosUpload { get; set; }
 
     public DbSet<SuplentePeriodo> SuplentePeriodos { get; set; }
     public DbSet<Permuta> Permutas { get; set; }
@@ -1076,6 +1077,15 @@ public partial class FreeTimeDbContext : DbContext
         //    entity.HasIndex(e => new { e.FechaInicio, e.FechaFin });
         //});
 
+        modelBuilder.Entity<FestivosEmpleadosTrabajadosUpload>(entity =>
+        {
+            entity.HasNoKey();
+            entity.ToTable("FestivosEmpleadosTrabajados_Upload");
+            entity.Property(e => e.Nomina).HasMaxLength(50);
+            entity.Property(e => e.Nombre).HasMaxLength(200);
+            entity.Property(e => e.FechaTrabajada).HasMaxLength(50);
+        });
+
         // Configuración para SolicitudesFestivosTrabajados
         modelBuilder.Entity<SolicitudesFestivosTrabajados>(entity =>
         {
@@ -1102,6 +1112,7 @@ public partial class FreeTimeDbContext : DbContext
             entity.HasOne(e => e.DiaInhabilOriginal)
                 .WithMany()
                 .HasForeignKey(e => e.FestivoTrabajadoOriginalId)
+                .IsRequired(false)
                 .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasOne(e => e.SolicitadoPor)

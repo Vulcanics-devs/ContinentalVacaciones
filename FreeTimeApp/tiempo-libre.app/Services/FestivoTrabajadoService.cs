@@ -69,6 +69,25 @@ namespace tiempo_libre.Services
                         "Empleado no encontrado o inactivo");
                 }
 
+                var nominaStr = empleado.Nomina?.ToString() ?? empleado.Username;
+                var fechaFestivoStr = diaInhabil.Fecha.ToString("yyyy-MM-dd");
+
+                var fechaAlternativa = diaInhabil.Fecha.ToString("dd-MM-yyyy");
+                var fechaSlash = diaInhabil.Fecha.ToString("dd/MM/yyyy");
+
+                var registroExcel = await _db.FestivosEmpleadosTrabajadosUpload
+                    .FirstOrDefaultAsync(f => f.Nomina == nominaStr &&
+                                               (f.FechaTrabajada == fechaFestivoStr ||
+                                                f.FechaTrabajada == fechaAlternativa ||
+                                                f.FechaTrabajada == fechaSlash));
+
+                if (registroExcel == null)
+                {
+                    return new ApiResponse<SolicitudFestivoTrabajadoResponse>(false, null,
+                        $"El empleado no tiene registrado haber trabajado el festivo del {diaInhabil.Fecha:dd/MM/yyyy}. " +
+                        "Solo pueden solicitar intercambio los empleados que aparecen en el registro de festivos trabajados.");
+                }
+
                 var yaIntercambiado = await _db.SolicitudesFestivosTrabajados
                 .AnyAsync(s => s.EmpleadoId == request.EmpleadoId &&
                   s.FestivoOriginal == diaInhabil.Fecha &&
@@ -503,32 +522,78 @@ namespace tiempo_libre.Services
         /// Consultar festivos trabajados disponibles para un empleado
         /// </summary>
         public async Task<ApiResponse<ListaFestivosTrabajadosResponse>> ConsultarFestivosTrabajadosAsync(
-        ConsultaFestivosTrabajadosRequest request)
+    ConsultaFestivosTrabajadosRequest request)
         {
             try
             {
-                // ✅ Obtener días inhábiles por ley
-                var query = _db.DiasInhabiles
-                    .Where(d => d.TipoActividadDelDia == TipoActividadDelDiaEnum.InhabilPorLey ||
-                                d.TipoActividadDelDia == TipoActividadDelDiaEnum.InhabilPorContinental)
-                    .AsNoTracking()
-                    .AsQueryable();
+                List<string>? fechasPermitidas = null;
 
-                // Filtrar por año si se especifica
-                if (request.Anio.HasValue)
+                if (request.EmpleadoId.HasValue)
                 {
-                    query = query.Where(d => d.Fecha.Year == request.Anio.Value);
-                    _logger.LogInformation($"🔍 Filtrando por año: {request.Anio.Value}");
+                    var emp = await _db.Users
+                        .Where(u => u.Id == request.EmpleadoId.Value)
+                        .Select(u => new { u.Nomina, u.Username })
+                        .FirstOrDefaultAsync();
+
+                    if (emp != null)
+                    {
+                        var nominaStr = emp.Nomina?.ToString() ?? emp.Username;
+                        _logger.LogInformation($"🔍 Buscando festivos para nómina: '{nominaStr}'");
+
+                        fechasPermitidas = await _db.FestivosEmpleadosTrabajadosUpload
+                            .Where(f => f.Nomina == nominaStr)
+                            .Select(f => f.FechaTrabajada)
+                            .ToListAsync();
+
+                        _logger.LogInformation($"📋 Fechas upload encontradas: {fechasPermitidas.Count} → [{string.Join(", ", fechasPermitidas)}]");
+                    }
+                }
+
+                // ✅ CLAVE: Si hay fechas del empleado en el upload, NO filtrar DiasInhabiles por año
+                // porque los festivos trabajados pueden ser de 2025 aunque el modal pida anio=2026
+                IQueryable<DiasInhabiles> query;
+
+                if (fechasPermitidas != null && fechasPermitidas.Count > 0)
+                {
+                    // Parsear las fechas del upload para obtener los años que necesitamos
+                    var aniosNecesarios = fechasPermitidas
+                        .Select(f =>
+                        {
+                            string[] formatos = { "yyyy-MM-dd", "dd-MM-yyyy", "dd/MM/yyyy" };
+                            if (DateOnly.TryParseExact(f, formatos, null,
+                                System.Globalization.DateTimeStyles.None, out var d))
+                                return (int?)d.Year;
+                            return null;
+                        })
+                        .Where(a => a.HasValue)
+                        .Select(a => a!.Value)
+                        .Distinct()
+                        .ToList();
+
+                    _logger.LogInformation($"📅 Años necesarios para buscar en DiasInhabiles: [{string.Join(", ", aniosNecesarios)}]");
+
+                    // Buscar DiasInhabiles SOLO de los años donde hay festivos trabajados
+                    query = _db.DiasInhabiles
+                        .Where(d =>
+                            (d.TipoActividadDelDia == TipoActividadDelDiaEnum.InhabilPorLey ||
+                             d.TipoActividadDelDia == TipoActividadDelDiaEnum.InhabilPorContinental) &&
+                            aniosNecesarios.Contains(d.Fecha.Year))
+                        .AsNoTracking();
                 }
                 else
                 {
-                    // ✅ Si no se especifica año, obtener del año actual
-                    var currentYear = DateTime.Now.Year;
-                    query = query.Where(d => d.Fecha.Year == currentYear);
+                    // Sin empleado o sin fechas upload: filtrar por año del request
+                    var anio = request.Anio ?? DateTime.Now.Year;
+                    _logger.LogInformation($"🔍 Filtrando DiasInhabiles por año: {anio}");
+
+                    query = _db.DiasInhabiles
+                        .Where(d =>
+                            (d.TipoActividadDelDia == TipoActividadDelDiaEnum.InhabilPorLey ||
+                             d.TipoActividadDelDia == TipoActividadDelDiaEnum.InhabilPorContinental) &&
+                            d.Fecha.Year == anio)
+                        .AsNoTracking();
                 }
 
-                _logger.LogInformation($"🔍 Query SQL: {query.ToQueryString()}");
-                // ✅ CAMBIO CRÍTICO: NO agrupar - obtener TODOS los días
                 var diasInhabiles = await query
                     .OrderBy(d => d.Fecha)
                     .Select(d => new { d.Id, d.Fecha, d.Detalles, d.TipoActividadDelDia })
@@ -536,10 +601,8 @@ namespace tiempo_libre.Services
 
                 _logger.LogInformation($"📅 Días inhábiles encontrados en BD: {diasInhabiles.Count}");
 
-                var festivosDto = new List<FestivoTrabajadoDto>();
-                var culture = new CultureInfo("es-ES");
-
-                Dictionary<DateOnly, bool> solicitudesDict = new Dictionary<DateOnly, bool>();
+                // Cargar solicitudes existentes del empleado
+                var solicitudesDict = new Dictionary<DateOnly, bool>();
                 if (request.EmpleadoId.HasValue)
                 {
                     var solicitudesExistentes = await _db.SolicitudesFestivosTrabajados
@@ -549,14 +612,30 @@ namespace tiempo_libre.Services
                         .ToListAsync();
 
                     foreach (var fecha in solicitudesExistentes)
-                    {
                         solicitudesDict[fecha] = true;
-                    }
                 }
 
-                // ✅ Iterar sobre TODOS los días sin agrupar
+                var festivosDto = new List<FestivoTrabajadoDto>();
+                var culture = new CultureInfo("es-ES");
+                string[] formatosFecha = { "yyyy-MM-dd", "dd-MM-yyyy", "dd/MM/yyyy" };
+
                 foreach (var diaInhabil in diasInhabiles)
                 {
+                    // Si hay restricción por empleado, verificar que trabajó ese festivo
+                    if (fechasPermitidas != null)
+                    {
+                        var coincide = fechasPermitidas.Any(f =>
+                        {
+                            if (string.IsNullOrEmpty(f)) return false;
+                            if (DateOnly.TryParseExact(f, formatosFecha, null,
+                                System.Globalization.DateTimeStyles.None, out var fechaParseada))
+                                return fechaParseada == diaInhabil.Fecha;
+                            return false;
+                        });
+
+                        if (!coincide) continue;
+                    }
+
                     var yaSolicitado = solicitudesDict.ContainsKey(diaInhabil.Fecha);
 
                     var dto = new FestivoTrabajadoDto
@@ -572,9 +651,7 @@ namespace tiempo_libre.Services
                     };
 
                     if (!request.SoloDisponibles || !dto.YaIntercambiado)
-                    {
                         festivosDto.Add(dto);
-                    }
                 }
 
                 _logger.LogInformation($"✅ Festivos DTOs generados: {festivosDto.Count}");
@@ -592,10 +669,10 @@ namespace tiempo_libre.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error al consultar festivos trabajados desde DiasInhabiles");
-                return new ApiResponse<ListaFestivosTrabajadosResponse>(false, null,
-                    $"Error inesperado: {ex.Message}");
+                return new ApiResponse<ListaFestivosTrabajadosResponse>(false, null, $"Error inesperado: {ex.Message}");
             }
         }
+
         /// <summary>
         /// Validar si un intercambio de festivo es posible antes de solicitarlo
         /// </summary>
