@@ -13,8 +13,7 @@ namespace tiempo_libre.Models
         [Required]
         public int EmpleadoId { get; set; }
 
-        [Required]
-        public int FestivoTrabajadoOriginalId { get; set; }
+        public int? FestivoTrabajadoOriginalId { get; set; }
 
         [Required]
         public DateOnly FechaNuevaSolicitada { get; set; }

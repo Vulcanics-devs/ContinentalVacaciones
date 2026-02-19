@@ -180,7 +180,7 @@ namespace tiempo_libre.DTOs
         public string NominaEmpleado { get; set; } = string.Empty;
         public string AreaEmpleado { get; set; } = string.Empty;
         public string GrupoEmpleado { get; set; } = string.Empty;
-        public int FestivoTrabajadoOriginalId { get; set; }
+        public int? FestivoTrabajadoOriginalId { get; set; }
         public DateOnly FestivoOriginal { get; set; }
         public DateOnly FechaNueva { get; set; }
         public string Motivo { get; set; } = string.Empty;

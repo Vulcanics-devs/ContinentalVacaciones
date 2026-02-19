@@ -125,6 +125,7 @@ const MyVacations = ({ currentPeriod }: { currentPeriod: Period }) => {
     const handlePasswordChanged = () => {
         toast.success("Contraseña actualizada correctamente");
     };
+
     // Cargar vacaciones reales del empleado al montar el componente
     useEffect(() => {
         const fetchVacaciones = async () => {
@@ -664,6 +665,18 @@ export const RequestModal = ({
     const [loading, setLoading] = useState(false);
     const [loadingFestivos, setLoadingFestivos] = useState(false);
 
+    const fechaMaxima = (() => {
+        if (!selectedFestivo) return new Date(anioVigente + 2, 11, 31).toISOString().split('T')[0];
+        const f = festivosDisponibles.find(x => x.id === selectedFestivo);
+        if (!f) return new Date(anioVigente + 2, 11, 31).toISOString().split('T')[0];
+        const partes = f.festivoTrabajado.split('-');
+        const fechaTrabajada = new Date(parseInt(partes[0]), parseInt(partes[1]) - 1, parseInt(partes[2]));
+        const limite = new Date(fechaTrabajada);
+        limite.setFullYear(limite.getFullYear() + 1);
+        limite.setMonth(limite.getMonth() + 1);
+        return limite.toISOString().split('T')[0];
+    })();
+
     // Cargar festivos disponibles cuando se abre el modal
     useEffect(() => {
         const loadFestivos = async () => {
@@ -811,7 +824,7 @@ export const RequestModal = ({
                                         onChange={(e) => setFechaNueva(e.target.value)}
                                         disabled={loading}
                                         min={new Date(anioVigente, 0, 1).toISOString().split('T')[0]} // minimo anioVigente 
-                                        max={new Date(anioVigente, 11, 31).toISOString().split('T')[0]}
+                                        max={fechaMaxima}
                                     />
                                 </div>
 

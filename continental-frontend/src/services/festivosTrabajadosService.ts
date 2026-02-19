@@ -258,36 +258,38 @@ class FestivosTrabajadosService {
   /**
    * Obtiene solicitudes de intercambio con filtros
    */
-  async getSolicitudes(filters?: {
-    estado?: string
-    empleadoId?: number
-    areaId?: number
-    fechaDesde?: string
-    fechaHasta?: string
-  }): Promise<SolicitudFestivoTrabajado[]> {
-    try {
-      const params = new URLSearchParams()
-      
-      if (filters?.estado) params.append('estado', filters.estado)
-      if (filters?.empleadoId) params.append('empleadoId', filters.empleadoId.toString())
-      if (filters?.areaId) params.append('areaId', filters.areaId.toString())
-      if (filters?.fechaDesde) params.append('fechaDesde', filters.fechaDesde)
-      if (filters?.fechaHasta) params.append('fechaHasta', filters.fechaHasta)
+    async getSolicitudes(filters?: {
+        estado?: string
+        empleadoId?: number
+        areaId?: number
+        fechaDesde?: string
+        fechaHasta?: string
+    }): Promise<SolicitudFestivoTrabajado[]> {
+        try {
+            const params = new URLSearchParams()
 
-      const response = await httpClient.get<ApiResponse<SolicitudFestivoTrabajado[]>>(
-        `${this.baseUrl}/solicitudes?${params.toString()}`
-      )
+            if (filters?.estado) params.append('estado', filters.estado)
+            if (filters?.empleadoId) params.append('empleadoId', filters.empleadoId.toString())
+            if (filters?.areaId) params.append('areaId', filters.areaId.toString())
+            if (filters?.fechaDesde) params.append('fechaDesde', filters.fechaDesde)
+            if (filters?.fechaHasta) params.append('fechaHasta', filters.fechaHasta)
 
-      if (response.success && response.data) {
-        return response.data as unknown as SolicitudFestivoTrabajado[]
-      }
+            const response = await httpClient.get<ApiResponse<HistorialFestivosResponse>>(
+                `${this.baseUrl}/solicitudes?${params.toString()}`
+            )
 
-      return []
-    } catch (error) {
-      console.error('Error fetching solicitudes festivos:', error)
-      return []
+            if (response.success && response.data) {
+                // ✅ Extraer el array de solicitudes del objeto anidado
+                const data = response.data as unknown as HistorialFestivosResponse
+                return data.solicitudes ?? []
+            }
+
+            return []
+        } catch (error) {
+            console.error('Error fetching solicitudes festivos:', error)
+            return []
+        }
     }
-  }
 
   /**
    * Obtiene solicitudes pendientes del área del jefe actual
