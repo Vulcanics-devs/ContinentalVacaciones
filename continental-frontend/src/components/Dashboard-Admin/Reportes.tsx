@@ -15,7 +15,7 @@ import { empleadosService } from "@/services/empleadosService";
 import { generarExcelEmpleadosFaltantesCaptura } from "@/utils/empleadosFaltantesCapturaExcel";
 import { generarExcelVacacionesAsignadasEmpresa } from "@/utils/vacacionesAsignadasEmpresaExcel";
 import { toast } from "sonner";
-import { Loader2, RefreshCw, ChevronDown } from "lucide-react";
+import { Loader2, RefreshCw, X } from "lucide-react";
 import { Download, Palmtree, FileText, Award, AlertTriangle, FileSpreadsheet, UserMinus } from "lucide-react";
 import type { EmpleadoDetalle } from "@/interfaces/Api.interface";
 import { PeriodOptions } from "@/interfaces/Calendar.interface";
@@ -52,7 +52,6 @@ const calculateAntiguedadAlCierre = (fechaIngreso: string | null | undefined, ta
     return Math.max(years, 0);
 };
 
-// 🆕 Función para convertir 24h a 12h con AM/PM
 const formatTime12Hour = (time24: string): string => {
     if (!time24) return "";
     const [hours, minutes] = time24.split(':').map(Number);
@@ -61,6 +60,26 @@ const formatTime12Hour = (time24: string): string => {
     return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
 };
 
+// Formatea una fecha ISO (YYYY-MM-DD) a formato legible DD/MM/YYYY
+const formatDateDisplay = (dateStr: string): string => {
+    if (!dateStr) return "";
+    const [year, month, day] = dateStr.split("-");
+    return `${day}/${month}/${year}`;
+};
+
+// Convierte una fecha YYYY-MM-DD al inicio del día (00:00:00.000)
+const toStartOfDay = (dateStr: string): Date => {
+    const [year, month, day] = dateStr.split("-").map(Number);
+    return new Date(year, month - 1, day, 0, 0, 0, 0);
+};
+
+// Convierte una fecha YYYY-MM-DD al fin del día (23:59:59.999)
+const toEndOfDay = (dateStr: string): Date => {
+    const [year, month, day] = dateStr.split("-").map(Number);
+    return new Date(year, month - 1, day, 23, 59, 59, 999);
+};
+
+type DateFilterMode = 'single' | 'range';
 type ReportCategory = 'programacion-anual' | 'reprogramacion';
 
 interface ReportCard {
@@ -81,7 +100,12 @@ export const Reportes = () => {
     const [timeFrom, setTimeFrom] = useState<string>("");
     const [timeTo, setTimeTo] = useState<string>("");
 
-    // 🆕 Estado para categoría seleccionada
+    // 🆕 Estados para filtro de fecha
+    const [dateFilterMode, setDateFilterMode] = useState<DateFilterMode>('single');
+    const [singleDate, setSingleDate] = useState<string>("");
+    const [dateRangeFrom, setDateRangeFrom] = useState<string>("");
+    const [dateRangeTo, setDateRangeTo] = useState<string>("");
+
     const [selectedCategory, setSelectedCategory] = useState<ReportCategory | 'all'>('all');
 
     interface GroupOption {
@@ -158,6 +182,37 @@ export const Reportes = () => {
         return true;
     };
 
+    // 🆕 Helpers para verificar si hay filtros de fecha activos
+    const hasDateFilter = (): boolean => {
+        if (dateFilterMode === 'single') return !!singleDate;
+        return !!(dateRangeFrom || dateRangeTo);
+    };
+
+    const clearDateFilters = () => {
+        setSingleDate("");
+        setDateRangeFrom("");
+        setDateRangeTo("");
+    };
+
+    const clearAllTemporalFilters = () => {
+        setTimeFrom("");
+        setTimeTo("");
+        clearDateFilters();
+    };
+
+    // 🆕 Función que devuelve el resumen del filtro de fecha activo
+    const getActiveDateLabel = (): string => {
+        if (dateFilterMode === 'single' && singleDate) {
+            return formatDateDisplay(singleDate);
+        }
+        if (dateFilterMode === 'range') {
+            if (dateRangeFrom && dateRangeTo) return `${formatDateDisplay(dateRangeFrom)} — ${formatDateDisplay(dateRangeTo)}`;
+            if (dateRangeFrom) return `Desde ${formatDateDisplay(dateRangeFrom)}`;
+            if (dateRangeTo) return `Hasta ${formatDateDisplay(dateRangeTo)}`;
+        }
+        return "";
+    };
+
     const handleReprogGeneral = async () => {
         if (!ensureReprogramming()) return;
         setLoadingGeneral(true);
@@ -175,6 +230,29 @@ export const Reportes = () => {
 
             let solicitudes = response?.solicitudes || [];
 
+            // 🆕 Filtro de fecha primero
+            if (hasDateFilter()) {
+                solicitudes = solicitudes.filter((solicitud) => {
+                    const fechaSolicitud = new Date(solicitud.fechaSolicitud);
+
+                    if (dateFilterMode === 'single' && singleDate) {
+                        const start = toStartOfDay(singleDate);
+                        const end = toEndOfDay(singleDate);
+                        return fechaSolicitud >= start && fechaSolicitud <= end;
+                    }
+
+                    if (dateFilterMode === 'range') {
+                        let cumple = true;
+                        if (dateRangeFrom) cumple = cumple && fechaSolicitud >= toStartOfDay(dateRangeFrom);
+                        if (dateRangeTo) cumple = cumple && fechaSolicitud <= toEndOfDay(dateRangeTo);
+                        return cumple;
+                    }
+
+                    return true;
+                });
+            }
+
+            // Filtro de hora
             if (timeFrom || timeTo) {
                 solicitudes = solicitudes.filter((solicitud) => {
                     const fechaSolicitud = new Date(solicitud.fechaSolicitud);
@@ -205,20 +283,12 @@ export const Reportes = () => {
                 return;
             }
 
-            const periodoTexto = timeFrom && timeTo
-                ? `${formatTime12Hour(timeFrom)} - ${formatTime12Hour(timeTo)}`
-                : timeFrom
-                    ? `Desde ${formatTime12Hour(timeFrom)}`
-                    : timeTo
-                        ? `Hasta ${formatTime12Hour(timeTo)}`
-                        : undefined;
-
             exportarReprogramacionesExcel(solicitudes, {
                 titulo: "Reporte general de reprogramaciones",
                 tipo: "general",
                 area: areaName,
-                fechaDesde: undefined,
-                fechaHasta: undefined
+                fechaDesde: dateFilterMode === 'single' ? singleDate : dateRangeFrom,
+                fechaHasta: dateFilterMode === 'single' ? singleDate : dateRangeTo
             });
 
             toast.success(`Reporte general descargado (${solicitudes.length} registros).`);
@@ -311,7 +381,6 @@ export const Reportes = () => {
         }
     ];
 
-    // 🆕 Filtrar reportes por categoría seleccionada
     const filteredReports = selectedCategory === 'all'
         ? reportCards
         : reportCards.filter(r => r.category === selectedCategory);
@@ -340,9 +409,6 @@ export const Reportes = () => {
                         reject(err);
                     });
             });
-
-        // [... resto del código de handleDownload sin cambios ...]
-        // (Mantén todo el código existente de handleDownload exactamente igual)
 
         if (reportId === 1) {
             try {
@@ -716,6 +782,8 @@ export const Reportes = () => {
         }
     };
 
+    const hasAnyTemporalFilter = hasDateFilter() || !!(timeFrom || timeTo);
+
     return (
         <div className="space-y-6 p-6 max-w-7xl mx-auto">
             <div className="space-y-6">
@@ -814,54 +882,146 @@ export const Reportes = () => {
                     </Select>
                 </div>
 
-                <div className="space-y-2">
-                    <Label className="text-base font-medium text-continental-black">
-                        Periodo de tiempo (opcional)
-                    </Label>
-                    <div className="grid grid-cols-2 gap-3 max-w-sm">
+                {/* 🆕 SECCIÓN COMBINADA: Filtro de fecha y hora */}
+                <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-4 max-w-2xl">
+                    <div className="flex items-center justify-between">
+                        <Label className="text-base font-medium text-continental-black">
+                            Filtro por fecha y hora (opcional)
+                        </Label>
+                        {hasAnyTemporalFilter && (
+                            <button
+                                onClick={clearAllTemporalFilters}
+                                className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 underline"
+                            >
+                                <X size={12} />
+                                Limpiar todo
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Selector de modo de fecha */}
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => { setDateFilterMode('single'); clearDateFilters(); }}
+                            className={`px-3 py-1.5 text-sm rounded-full border transition-colors ${dateFilterMode === 'single'
+                                    ? 'bg-continental-black text-white border-continental-black'
+                                    : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'
+                                }`}
+                        >
+                            Día específico
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => { setDateFilterMode('range'); clearDateFilters(); }}
+                            className={`px-3 py-1.5 text-sm rounded-full border transition-colors ${dateFilterMode === 'range'
+                                    ? 'bg-continental-black text-white border-continental-black'
+                                    : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'
+                                }`}
+                        >
+                            Rango de fechas
+                        </button>
+                    </div>
+
+                    {/* Input(s) de fecha según el modo */}
+                    {dateFilterMode === 'single' ? (
                         <div className="flex flex-col gap-1">
-                            <span className="text-xs text-gray-600">Desde</span>
+                            <span className="text-xs text-gray-600">Fecha</span>
+                            <input
+                                type="date"
+                                value={singleDate}
+                                onChange={(e) => setSingleDate(e.target.value)}
+                                className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 max-w-xs bg-white"
+                            />
+                            {singleDate && (
+                                <span className="text-xs text-gray-500 italic">{formatDateDisplay(singleDate)}</span>
+                            )}
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="flex flex-col gap-1">
+                                <span className="text-xs text-gray-600">Fecha desde</span>
+                                <input
+                                    type="date"
+                                    value={dateRangeFrom}
+                                    max={dateRangeTo || undefined}
+                                    onChange={(e) => setDateRangeFrom(e.target.value)}
+                                    className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                                />
+                                {dateRangeFrom && (
+                                    <span className="text-xs text-gray-500 italic">{formatDateDisplay(dateRangeFrom)}</span>
+                                )}
+                            </div>
+                            <div className="flex flex-col gap-1">
+                                <span className="text-xs text-gray-600">Fecha hasta</span>
+                                <input
+                                    type="date"
+                                    value={dateRangeTo}
+                                    min={dateRangeFrom || undefined}
+                                    onChange={(e) => setDateRangeTo(e.target.value)}
+                                    className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                                />
+                                {dateRangeTo && (
+                                    <span className="text-xs text-gray-500 italic">{formatDateDisplay(dateRangeTo)}</span>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Separador visual */}
+                    <div className="flex items-center gap-2 pt-1">
+                        <div className="h-px flex-1 bg-gray-200" />
+                        <span className="text-xs text-gray-400 px-2">y opcionalmente filtrar por hora</span>
+                        <div className="h-px flex-1 bg-gray-200" />
+                    </div>
+
+                    {/* Filtro de horas */}
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="flex flex-col gap-1">
+                            <span className="text-xs text-gray-600">Hora desde</span>
                             <input
                                 type="time"
                                 value={timeFrom}
                                 onChange={(e) => setTimeFrom(e.target.value)}
-                                className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                             />
                             {timeFrom && (
-                                <span className="text-xs text-gray-500 italic">
-                                    {formatTime12Hour(timeFrom)}
-                                </span>
+                                <span className="text-xs text-gray-500 italic">{formatTime12Hour(timeFrom)}</span>
                             )}
                         </div>
                         <div className="flex flex-col gap-1">
-                            <span className="text-xs text-gray-600">Hasta</span>
+                            <span className="text-xs text-gray-600">Hora hasta</span>
                             <input
                                 type="time"
                                 value={timeTo}
                                 onChange={(e) => setTimeTo(e.target.value)}
-                                className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                             />
                             {timeTo && (
-                                <span className="text-xs text-gray-500 italic">
-                                    {formatTime12Hour(timeTo)}
-                                </span>
+                                <span className="text-xs text-gray-500 italic">{formatTime12Hour(timeTo)}</span>
                             )}
                         </div>
                     </div>
-                    {(timeFrom || timeTo) && (
-                        <button
-                            onClick={() => {
-                                setTimeFrom("");
-                                setTimeTo("");
-                            }}
-                            className="text-xs text-blue-600 hover:text-blue-800 underline"
-                        >
-                            Limpiar periodo
-                        </button>
+
+                    {/* Resumen de filtros activos */}
+                    {hasAnyTemporalFilter && (
+                        <div className="rounded-lg bg-blue-50 border border-blue-100 px-3 py-2 text-xs text-blue-700 flex flex-wrap items-center gap-x-3 gap-y-1">
+                            <span className="font-medium">Filtros activos:</span>
+                            {hasDateFilter() && (
+                                <span>
+                                    📅 {getActiveDateLabel()}
+                                </span>
+                            )}
+                            {(timeFrom || timeTo) && (
+                                <span>
+                                    🕐 {timeFrom ? formatTime12Hour(timeFrom) : "inicio"} — {timeTo ? formatTime12Hour(timeTo) : "fin"}
+                                </span>
+                            )}
+                        </div>
                     )}
                 </div>
 
-                {/* 🆕 DROPDOWN DE CATEGORÍAS */}
+                {/* Categoría de reporte */}
                 <div className="space-y-2">
                     <Label className="text-base font-medium text-continental-black">Categoría de reporte</Label>
                     <Select
@@ -904,8 +1064,8 @@ export const Reportes = () => {
                                                 <p className="text-sm text-gray-600">{report.subtitle}</p>
                                                 <div className="flex items-center gap-2">
                                                     <span className={`text-xs px-2 py-0.5 rounded-full ${report.category === 'programacion-anual'
-                                                            ? 'bg-blue-100 text-blue-700'
-                                                            : 'bg-purple-100 text-purple-700'
+                                                        ? 'bg-blue-100 text-blue-700'
+                                                        : 'bg-purple-100 text-purple-700'
                                                         }`}>
                                                         {report.category === 'programacion-anual' ? 'Programación Anual' : 'Reprogramación'}
                                                     </span>
