@@ -977,6 +977,159 @@ namespace tiempo_libre.app.Controllers
             return Ok(new ApiResponse<List<UsuarioInfoDto>>(true, usuarios));
         }
 
+        // EP: Eliminar usuario con confirmación de contraseña del admin
+        // EP: Eliminar usuario con confirmación de contraseña del admin
+        [HttpPost("delete/{id}")]
+        [Authorize(Roles = "SuperUsuario")]
+        public async Task<IActionResult> DeleteUser(int id, [FromBody] DeleteUserRequest request)
+        {
+            // Verificar que el usuario a eliminar existe
+            var userToDelete = await _dbContext.Users.FindAsync(id);
+            if (userToDelete == null)
+                return NotFound(new ApiResponse<object>(false, null, "Usuario no encontrado"));
+
+            // Verificar identidad del admin mediante su contraseña
+            var currentUsername = User.Identity?.Name;
+            var currentUser = await _dbContext.Users.FirstOrDefaultAsync(u => u.Username == currentUsername);
+            if (currentUser == null)
+                return Unauthorized(new ApiResponse<object>(false, null, "No hay sesión iniciada"));
+
+            var hashedInput = PasswordHasher.HashPassword(request.AdminPassword, currentUser.PasswordSalt);
+            if (hashedInput != currentUser.PasswordHash)
+                return BadRequest(new ApiResponse<object>(false, null, "Contraseña incorrecta"));
+
+            // No permitir que el admin se elimine a sí mismo
+            if (currentUser.Id == id)
+                return BadRequest(new ApiResponse<object>(false, null, "No puedes eliminar tu propia cuenta"));
+
+            try
+            {
+                // 1. Limpiar referencias como Jefe en Áreas
+                var areasComoJefe = await _dbContext.Areas
+                    .Where(a => a.JefeId == id)
+                    .ToListAsync();
+                foreach (var area in areasComoJefe)
+                {
+                    area.JefeId = null;
+                    area.JefeSuplenteId = null;
+                }
+
+                // 2. Limpiar referencias como Líder en Grupos
+                var gruposComoLider = await _dbContext.Grupos
+                    .Where(g => g.LiderId == id)
+                    .ToListAsync();
+                foreach (var grupo in gruposComoLider)
+                {
+                    grupo.LiderId = null;
+                    grupo.LiderSuplenteId = null;
+                }
+
+                // 3. Eliminar registros en AreaIngenieros
+                var areaIngenieros = await _dbContext.AreaIngenieros
+                    .Where(ai => ai.IngenieroId == id || ai.SuplenteId == id)
+                    .ToListAsync();
+                if (areaIngenieros.Any())
+                    _dbContext.AreaIngenieros.RemoveRange(areaIngenieros);
+
+                // 4. Eliminar SuplentePeriodos (como usuario principal o como suplente)
+                var suplentePeriodos = await _dbContext.SuplentePeriodos
+                    .Where(sp => sp.UsuarioId == id || sp.SuplenteId == id)
+                    .ToListAsync();
+                if (suplentePeriodos.Any())
+                    _dbContext.SuplentePeriodos.RemoveRange(suplentePeriodos);
+
+                // 5. Eliminar Notificaciones
+                var notificaciones = await _dbContext.Notificaciones
+                    .Where(n => n.IdUsuarioEmisor == id || n.IdUsuarioReceptor == id)
+                    .ToListAsync();
+                if (notificaciones.Any())
+                    _dbContext.Notificaciones.RemoveRange(notificaciones);
+
+                // 6. Eliminar SolicitudesReprogramacion
+                var solicitudesReprog = await _dbContext.SolicitudesReprogramacion
+                    .Where(sr => sr.EmpleadoId == id)
+                    .ToListAsync();
+                if (solicitudesReprog.Any())
+                    _dbContext.SolicitudesReprogramacion.RemoveRange(solicitudesReprog);
+
+                // 7. Eliminar SolicitudesFestivosTrabajados
+                var solicitudesFestivos = await _dbContext.SolicitudesFestivosTrabajados
+                    .Where(sf => sf.EmpleadoId == id)
+                    .ToListAsync();
+                if (solicitudesFestivos.Any())
+                    _dbContext.SolicitudesFestivosTrabajados.RemoveRange(solicitudesFestivos);
+
+                // 8. Eliminar AsignacionesBloque y CambiosBloque
+                var asignacionesBloque = await _dbContext.AsignacionesBloque
+                    .Where(ab => ab.EmpleadoId == id)
+                    .ToListAsync();
+                if (asignacionesBloque.Any())
+                    _dbContext.AsignacionesBloque.RemoveRange(asignacionesBloque);
+
+                var cambiosBloque = await _dbContext.CambiosBloque
+                    .Where(cb => cb.EmpleadoId == id)
+                    .ToListAsync();
+                if (cambiosBloque.Any())
+                    _dbContext.CambiosBloque.RemoveRange(cambiosBloque);
+
+                // 9. Eliminar VacacionesProgramadas
+                var vacaciones = await _dbContext.VacacionesProgramadas
+                    .Where(v => v.EmpleadoId == id)
+                    .ToListAsync();
+                if (vacaciones.Any())
+                    _dbContext.VacacionesProgramadas.RemoveRange(vacaciones);
+
+                // 10. Eliminar DiasCalendarioEmpleado y CalendarioEmpleados
+                var diasCalendario = await _dbContext.DiasCalendarioEmpleado
+                    .Where(d => d.IdUsuarioEmpleadoSindicalizado == id)
+                    .ToListAsync();
+                if (diasCalendario.Any())
+                    _dbContext.DiasCalendarioEmpleado.RemoveRange(diasCalendario);
+
+                var calendarios = await _dbContext.CalendarioEmpleados
+                    .Where(c => c.IdUsuarioEmpleadoSindicalizado == id)
+                    .ToListAsync();
+                if (calendarios.Any())
+                    _dbContext.CalendarioEmpleados.RemoveRange(calendarios);
+
+                // 11. Eliminar DiasFestivosTrabajados
+                var festivosTrabajados = await _dbContext.DiasFestivosTrabajados
+                    .Where(d => d.IdUsuarioEmpleadoSindicalizado == id)
+                    .ToListAsync();
+                if (festivosTrabajados.Any())
+                    _dbContext.DiasFestivosTrabajados.RemoveRange(festivosTrabajados);
+
+                // 12. Eliminar ReservacionesDeVacacionesPorEmpleado
+                var reservaciones = await _dbContext.ReservacionesDeVacacionesPorEmpleado
+                    .Where(r => r.IdEmpleadoSindicalizado == id)
+                    .ToListAsync();
+                if (reservaciones.Any())
+                    _dbContext.ReservacionesDeVacacionesPorEmpleado.RemoveRange(reservaciones);
+
+                // 13. Eliminar EmpleadosXBloquesDeTurnos
+                var bloquesTurnos = await _dbContext.EmpleadosXBloquesDeTurnos
+                    .Where(e => e.IdEmpleadoSindicalAgendara == id)
+                    .ToListAsync();
+                if (bloquesTurnos.Any())
+                    _dbContext.EmpleadosXBloquesDeTurnos.RemoveRange(bloquesTurnos);
+
+                // Guardar limpieza de dependencias primero
+                await _dbContext.SaveChangesAsync();
+
+                // Ahora sí eliminar el usuario
+                _dbContext.Users.Remove(userToDelete);
+                await _dbContext.SaveChangesAsync();
+
+                _logger.LogInformation("Usuario {Id} eliminado por {Admin}", id, currentUsername);
+                return Ok(new ApiResponse<object>(true, null, "Usuario eliminado correctamente"));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al eliminar usuario {Id}", id);
+                return StatusCode(500, new ApiResponse<object>(false, null, "Error al eliminar el usuario: " + ex.Message));
+            }
+        }
+
         private async Task<List<AreaWithRoleDto>> BuildConsolidatedAreas(int userId)
         {
             _logger.LogInformation("BuildConsolidatedAreas llamado para usuario {UserId}", userId);
@@ -1227,6 +1380,12 @@ namespace tiempo_libre.app.Controllers
         public bool HasPreviousPage { get; set; }
         public int? FilteredByArea { get; set; }
         public int? FilteredByGrupo { get; set; }
+    }
+
+    public class DeleteUserRequest
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("adminPassword")]
+        public required string AdminPassword { get; set; }
     }
     #endregion
 }

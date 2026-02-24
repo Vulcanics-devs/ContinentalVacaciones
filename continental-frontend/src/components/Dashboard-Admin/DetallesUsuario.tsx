@@ -13,6 +13,7 @@ import { useAreas } from "@/hooks/useAreas";
 import { ChangePasswordModal } from "@/components/Empleado/ChangePasswordModal";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { DeleteUserModal } from "@/components/Empleado/DeleteUserModal";
 
 
 // Using the API User interface directly
@@ -27,11 +28,13 @@ export const DetallesUsuario = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-    const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
 
-    const currentData = editedData ?? userData;
-    const currentAreaId = currentData?.areaId ?? null;
-    const { areas, loading: areasLoading } = useAreas();
+  const currentData = editedData ?? userData;
+  const currentAreaId = currentData?.areaId ?? null;
+  const { areas, loading: areasLoading } = useAreas();
+
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   // Fetch user data from API
   useEffect(() => {
     const fetchUserData = async () => {
@@ -234,6 +237,13 @@ export const DetallesUsuario = () => {
                 >
                   <Key className="w-4 h-4" />
                   Restablecer Contraseña
+                </Button>
+                <Button
+                    onClick={() => setShowDeleteModal(true)}
+                    variant="destructive"
+                    className="gap-2"
+                >
+                    Eliminar usuario
                 </Button>
               </>
             ) : (
@@ -501,6 +511,13 @@ export const DetallesUsuario = () => {
         userId={userData.id}
         userName={userData.fullName}
         onPasswordChanged={handlePasswordChanged}
+      />
+      <DeleteUserModal
+          show={showDeleteModal}
+          onClose={() => setShowDeleteModal(false)}
+          userId={userData.id}
+          userName={userData.fullName}
+          onDeleted={() => navigate("/admin/usuarios")}
       />
     </div>
   );

@@ -257,4 +257,8 @@ export const userService = {
     }
   },
 
+    async deleteUser(userId: number, adminPassword: string): Promise<void> {
+        await httpClient.post(`/api/User/delete/${userId}`, { adminPassword });
+    },
+
 };
