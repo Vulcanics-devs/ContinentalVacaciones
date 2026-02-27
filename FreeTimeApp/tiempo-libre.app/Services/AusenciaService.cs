@@ -143,16 +143,16 @@ namespace tiempo_libre.Services
             var personalTotal = todosLosEmpleados.Count;
             if (personalTotal < 0) personalTotal = 0; // seguridad
 
-            // 4) Empleados con vacaciones activas (ese día)
-            var empleadosConVacaciones = await ObtenerEmpleadosConVacacionesAsync(fecha, grupoId);
+            // 4) Empleados ausentes (vacaciones, incapacidades, permisos)
+            var empleadosAusentes = await ObtenerEmpleadosAusentesAsync(fecha, grupoId);
 
             // Simulación de ausencia: agregar empleado si aplica y no está ya en la lista
-            if (empleadoAdicionalId.HasValue && !empleadosConVacaciones.Any(e => e.EmpleadoId == empleadoAdicionalId.Value))
+            if (empleadoAdicionalId.HasValue && !empleadosAusentes.Any(e => e.EmpleadoId == empleadoAdicionalId.Value))
             {
                 var empleadoAdicional = await _db.Users.FindAsync(empleadoAdicionalId.Value);
                 if (empleadoAdicional != null)
                 {
-                    empleadosConVacaciones.Add(new EmpleadoAusenteDto
+                    empleadosAusentes.Add(new EmpleadoAusenteDto
                     {
                         EmpleadoId = empleadoAdicional.Id,
                         NombreCompleto = empleadoAdicional.FullName ?? "",
@@ -164,7 +164,7 @@ namespace tiempo_libre.Services
                 }
             }
 
-            var idsAusentes = empleadosConVacaciones.Select(e => e.EmpleadoId).ToHashSet();
+            var idsAusentes = empleadosAusentes.Select(e => e.EmpleadoId).ToHashSet();
             var empleadosDisponibles = todosLosEmpleados
                 .Where(emp => !idsAusentes.Contains(emp.Id))
                 .Select(emp => new EmpleadoDisponibleDto
@@ -178,7 +178,7 @@ namespace tiempo_libre.Services
                 .ToList();
 
             // 5) Disponibles / No disponibles
-            var personalNoDisponible = empleadosConVacaciones.Count;
+            var personalNoDisponible = empleadosAusentes.Count;
             var personalDisponible = Math.Max(0, personalTotal - personalNoDisponible);
 
             // ==============================
@@ -235,22 +235,22 @@ namespace tiempo_libre.Services
                 PorcentajeMaximoPermitido = porcentajeMaximo,
                 ExcedeLimite = excedeLimite,
                 PuedeReservar = puedeReservar,
-                EmpleadosAusentes = empleadosConVacaciones,
+                EmpleadosAusentes = empleadosAusentes,
                 EmpleadosDisponibles = empleadosDisponibles
             };
         }
 
 
-        private async Task<List<EmpleadoAusenteDto>> ObtenerEmpleadosConVacacionesAsync(DateOnly fecha, int grupoId)
+        private async Task<List<EmpleadoAusenteDto>> ObtenerEmpleadosAusentesAsync(DateOnly fecha, int grupoId)
         {
-            return await _db.VacacionesProgramadas
+            // 1. Obtener Vacaciones
+            var vacaciones = await _db.VacacionesProgramadas
                 .Where(v => v.FechaVacacion == fecha && 
                            v.EstadoVacacion == "Activa")
                 .Join(_db.Users.Where(u => u.GrupoId == grupoId),
                       v => v.EmpleadoId, 
                       u => u.Id, 
                       (v, u) => new { Vacacion = v, Usuario = u })
-                .Where(vu => vu.Usuario.GrupoId == grupoId)
                 .Select(vu => new EmpleadoAusenteDto
                 {
                     EmpleadoId = vu.Vacacion.EmpleadoId,
@@ -261,6 +261,32 @@ namespace tiempo_libre.Services
                     Maquina = vu.Usuario.Maquina
                 })
                 .ToListAsync();
+
+            // 2. Obtener Incapacidades y Permisos
+            var permisosIncapacidades = await _db.PermisosEIncapacidadesSAP
+                .Where(p => p.Desde <= fecha && p.Hasta >= fecha)
+                .Join(_db.Users.Where(u => u.GrupoId == grupoId),
+                      p => p.Nomina,
+                      u => u.Nomina,
+                      (p, u) => new { Permiso = p, Usuario = u })
+                .Select(pu => new EmpleadoAusenteDto
+                {
+                    EmpleadoId = pu.Usuario.Id,
+                    NombreCompleto = pu.Usuario.FullName ?? "",
+                    Nomina = pu.Usuario.Nomina,
+                    TipoAusencia = (pu.Permiso.ClaseAbsentismo ?? "").Contains("Incapacidad", StringComparison.OrdinalIgnoreCase) ? "Incapacidad" : "Permiso",
+                    TipoVacacion = pu.Permiso.ClaseAbsentismo ?? "Permiso",
+                    Maquina = pu.Usuario.Maquina
+                })
+                .ToListAsync();
+
+            // Combinar y eliminar duplicados (por si alguien tiene vacaciones y permiso el mismo día)
+            var todosAusentes = vacaciones.Concat(permisosIncapacidades)
+                .GroupBy(a => a.EmpleadoId)
+                .Select(g => g.First())
+                .ToList();
+
+            return todosAusentes;
         }
 
         private async Task<decimal> ObtenerPorcentajeMaximoPermitidoAsync(int grupoId, DateOnly fecha)
