@@ -478,15 +478,17 @@ namespace tiempo_libre.Services
                 }
                 else if (esDelegadoSindical)
                 {
-                    // 🔥 SOLUCIÓN: Usar !HasValue en lugar de comparar con null
+                    // FIX: Delegado ve sus solicitudes + sin solicitante + misma área
+                    var areaIdDelegado = usuarioConsulta.AreaId;
                     query = query.Where(s =>
                         s.SolicitadoPorId == usuarioConsultaId ||
-                        !s.SolicitadoPorId.HasValue  // ← Esta es la clave
+                        !s.SolicitadoPorId.HasValue ||
+                        (areaIdDelegado.HasValue && s.Empleado.AreaId == areaIdDelegado.Value)
                     );
 
                     _logger.LogInformation(
-                        "Delegado Sindical {UserId} - filtrando por SolicitadoPorId = {UserId} OR NULL",
-                        usuarioConsultaId, usuarioConsultaId);
+                        "Delegado Sindical {UserId} (AreaId={AreaId}) - filtrando por SolicitadoPorId = {UserId} OR NULL OR misma área",
+                        usuarioConsultaId, areaIdDelegado, usuarioConsultaId);
                 }
 
                 if (!string.IsNullOrEmpty(request.Estado))
