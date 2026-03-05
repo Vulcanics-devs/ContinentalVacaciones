@@ -390,8 +390,12 @@ export default function SolicitudDetallePage() {
                                     <p className="font-medium">{solicitud.motivo || 'Sin motivo especificado'}</p>
                                 </div>
                                 <div>
-                                    <span className="text-sm text-gray-500">Porcentaje Calculado:</span>
+                                    <span className="text-sm text-gray-500">% Turno:</span>
                                     <p className="font-medium">{formatPorcentaje(solicitud.porcentajeCalculado)}</p>
+                                </div>
+                                <div>
+                                    <span className="text-sm text-gray-500">% Día:</span>
+                                    <p className="font-medium">{formatPorcentaje(solicitud.porcentajeDelDia)}</p>
                                 </div>
                             </div>
                         </div>
