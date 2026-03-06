@@ -244,6 +244,7 @@ namespace tiempo_libre.Services
         private async Task<List<EmpleadoAusenteDto>> ObtenerEmpleadosAusentesAsync(DateOnly fecha, int grupoId)
         {
             // 1. Vacaciones activas (todos los tipos: Anual, Automatica, Programable, FestivoTrabajado, etc.)
+            // Incluye reprogramaciones aprobadas (PeriodoProgramacion == "Reprogramacion")
             var vacaciones = await _db.VacacionesProgramadas
                 .Where(v => v.FechaVacacion == fecha && v.EstadoVacacion == "Activa")
                 .Join(_db.Users.Where(u => u.GrupoId == grupoId),
@@ -255,15 +256,20 @@ namespace tiempo_libre.Services
                     EmpleadoId = vu.Vacacion.EmpleadoId,
                     NombreCompleto = vu.Usuario.FullName ?? "",
                     Nomina = vu.Usuario.Nomina,
-                    TipoAusencia = "Vacacion",
-                    TipoVacacion = vu.Vacacion.TipoVacacion,
+                    TipoAusencia = vu.Vacacion.PeriodoProgramacion == "Reprogramacion" ? "Reprogramacion" : "Vacacion",
+                    TipoVacacion = vu.Vacacion.PeriodoProgramacion == "Reprogramacion"
+                        ? "Reprogramacion"
+                        : vu.Vacacion.TipoVacacion,
                     Maquina = vu.Usuario.Maquina
                 })
                 .ToListAsync();
 
             // 2. Permisos e Incapacidades SAP
+            // Si tiene FechaSolicitud = es solicitud manual, requiere aprobacion
+            // Si NO tiene FechaSolicitud = viene de Excel/SAP, siempre se muestra
             var permisosIncapacidades = await _db.PermisosEIncapacidadesSAP
-                .Where(p => p.Desde <= fecha && p.Hasta >= fecha)
+                .Where(p => p.Desde <= fecha && p.Hasta >= fecha
+                    && (p.FechaSolicitud == null || p.EstadoSolicitud == "Aprobada"))
                 .Join(_db.Users.Where(u => u.GrupoId == grupoId),
                       p => p.Nomina,
                       u => u.Nomina,
