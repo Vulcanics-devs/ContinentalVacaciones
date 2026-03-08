@@ -434,6 +434,15 @@ export function TablaSolicitudes() {
         setSelectedSolicitudForApprove(null)
     }
 
+    const filteredSolicitudes = sortedSolicitudes.filter((s) => {
+        if (!query) return true
+        const q = query.toLowerCase()
+        return (
+            s.nominaEmpleado?.toString().toLowerCase().includes(q) ||
+            s.nombreEmpleado?.toLowerCase().includes(q)
+        )
+    })
+
     return (
         <>
             <section className="rounded-lg border-2 border-gray-300 bg-white">
@@ -511,7 +520,7 @@ export function TablaSolicitudes() {
                     ) : (
                         <DataTable<Solicitud>
                             columns={columns}
-                            data={sortedSolicitudes}
+                            data={filteredSolicitudes}
                             keyField="id"
                             emptyMessage="No hay solicitudes disponibles"
                             onSort={handleSort}
