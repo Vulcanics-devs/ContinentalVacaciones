@@ -553,82 +553,114 @@ namespace tiempo_libre.Services
                 );
 
                 // Precalcular porcentajes del día para cada solicitud
-                // (no se puede hacer await dentro del .Select() de LINQ)
                 var porcentajesDelDia = new Dictionary<int, decimal>();
 
+                // ✅ Obtener todas las fechas únicas de una vez
+                var fechasUnicas = solicitudes
+                    .Select(s => s.FechaNuevaSolicitada)
+                    .Distinct()
+                    .ToList();
+
+                // ✅ Obtener todas las áreas únicas
+                var areasUnicas = solicitudes
+                    .Select(s => s.Empleado?.Grupo?.Area?.AreaId ?? s.Empleado?.AreaId)
+                    .Where(a => a.HasValue)
+                    .Select(a => a!.Value)
+                    .Distinct()
+                    .ToList();
+
+                // ✅ Una sola query para todos los grupos del área
+                var gruposPorArea = await _db.Grupos
+                    .Where(g => areasUnicas.Contains(g.AreaId))
+                    .Select(g => new { g.GrupoId, g.AreaId })
+                    .ToListAsync();
+
+                var todosGrupoIds = gruposPorArea.Select(g => g.GrupoId).ToList();
+
+                // ✅ Una sola query para total de empleados por grupo
+                var empleadosPorGrupo = await _db.Users
+                    .Where(u => todosGrupoIds.Contains(u.GrupoId ?? 0) && u.Status == UserStatus.Activo)
+                    .GroupBy(u => u.GrupoId ?? 0)
+                    .Select(g => new { GrupoId = g.Key, Total = g.Count() })
+                    .ToDictionaryAsync(g => g.GrupoId, g => g.Total);
+
+                // ✅ Una sola query para todas las vacaciones de esas fechas
+                var vacacionesPorFecha = await _db.VacacionesProgramadas
+                    .Where(v => fechasUnicas.Contains(v.FechaVacacion) && v.EstadoVacacion == "Activa")
+                    .Select(v => new { v.FechaVacacion, v.EmpleadoId })
+                    .ToListAsync();
+
+                // ✅ Una sola query para nóminas activas
+                var nominasActivas = await _db.Users
+                    .Where(u => todosGrupoIds.Contains(u.GrupoId ?? 0) && u.Status == UserStatus.Activo)
+                    .Select(u => new { u.Id, u.Nomina, u.GrupoId })
+                    .ToListAsync();
+
+                var nominasSet = nominasActivas.Select(u => u.Nomina).ToHashSet();
+
+                // ✅ Una sola query para permisos SAP
+                var permisosSAP = await _db.PermisosEIncapacidadesSAP
+                    .Where(p => fechasUnicas.Any(f => p.Desde <= f && p.Hasta >= f) && nominasSet.Contains(p.Nomina))
+                    .Select(p => new { p.Nomina, p.Desde, p.Hasta })
+                    .ToListAsync();
+
+                // ✅ Una sola query para festivos aprobados
+                var festivosAprobados = await _db.SolicitudesFestivosTrabajados
+                    .Where(f => fechasUnicas.Contains(f.FechaNuevaSolicitada)
+                             && f.EstadoSolicitud == "Aprobada"
+                             && nominasSet.Contains(f.Nomina))
+                    .Select(f => new { f.FechaNuevaSolicitada, f.EmpleadoId })
+                    .ToListAsync();
+
+                // Ahora calcular en memoria (sin más queries)
                 foreach (var s in solicitudes)
                 {
                     try
                     {
-                        // Obtener todos los grupos del área del empleado
                         var areaId = s.Empleado?.Grupo?.Area?.AreaId ?? s.Empleado?.AreaId;
                         if (!areaId.HasValue) continue;
 
-                        var gruposDelArea = await _db.Grupos
+                        var gruposDelArea = gruposPorArea
                             .Where(g => g.AreaId == areaId.Value)
                             .Select(g => g.GrupoId)
-                            .ToListAsync();
+                            .ToList();
 
                         if (gruposDelArea.Count == 0) continue;
 
-                        // Total de empleados activos del área
-                        var totalEmpleadosArea = await _db.Users
-                            .CountAsync(u => gruposDelArea.Contains(u.GrupoId ?? 0)
-                                          && u.Status == UserStatus.Activo);
-
+                        var totalEmpleadosArea = gruposDelArea.Sum(gId => empleadosPorGrupo.GetValueOrDefault(gId, 0));
                         if (totalEmpleadosArea == 0) continue;
 
                         var fechaNueva = s.FechaNuevaSolicitada;
-
-                        // Ausentes por vacaciones activas
-                        var ausentesVacaciones = await _db.VacacionesProgramadas
-                            .Where(v => v.FechaVacacion == fechaNueva
-                                     && v.EstadoVacacion == "Activa"
-                                     && gruposDelArea.Contains(
-                                            _db.Users
-                                               .Where(u => u.Id == v.EmpleadoId)
-                                               .Select(u => u.GrupoId ?? 0)
-                                               .FirstOrDefault()))
-                            .Select(v => v.EmpleadoId)
-                            .Distinct()
-                            .ToListAsync();
-
-                        // Ausentes por permisos/incapacidades SAP
-                        var nominasDelArea = await _db.Users
-                            .Where(u => gruposDelArea.Contains(u.GrupoId ?? 0)
-                                     && u.Status == UserStatus.Activo)
+                        var nominasDelArea = nominasActivas
+                            .Where(u => gruposDelArea.Contains(u.GrupoId ?? 0))
                             .Select(u => u.Nomina)
-                            .ToListAsync();
+                            .ToHashSet();
 
-                        var ausentesPermisos = await _db.PermisosEIncapacidadesSAP
-                            .Where(p => p.Desde <= fechaNueva
-                                     && p.Hasta >= fechaNueva
-                                     && nominasDelArea.Contains(p.Nomina))
-                            .Join(_db.Users,
-                                  p => p.Nomina,
-                                  u => u.Nomina,
-                                  (p, u) => u.Id)
-                            .Distinct()
-                            .ToListAsync();
+                        // Ausentes por vacaciones
+                        var empleadosConVacacion = vacacionesPorFecha
+                            .Where(v => v.FechaVacacion == fechaNueva)
+                            .Select(v => v.EmpleadoId)
+                            .ToHashSet();
 
-                        // Ausentes por festivos trabajados aprobados
-                        var ausentesFestivos = await _db.SolicitudesFestivosTrabajados
-                            .Where(f => f.FechaNuevaSolicitada == fechaNueva
-                                     && f.EstadoSolicitud == "Aprobada"
-                                     && nominasDelArea.Contains(f.Nomina))
+                        // Ausentes por permisos SAP
+                        var empleadosConPermiso = permisosSAP
+                            .Where(p => p.Desde <= fechaNueva && p.Hasta >= fechaNueva && nominasDelArea.Contains(p.Nomina))
+                            .Select(p => nominasActivas.FirstOrDefault(u => u.Nomina == p.Nomina)?.Id ?? 0)
+                            .Where(id => id != 0)
+                            .ToHashSet();
+
+                        // Ausentes por festivos
+                        var empleadosConFestivo = festivosAprobados
+                            .Where(f => f.FechaNuevaSolicitada == fechaNueva)
                             .Select(f => f.EmpleadoId)
-                            .Distinct()
-                            .ToListAsync();
+                            .ToHashSet();
 
-                        // Unión de todos los ausentes (sin duplicados)
-                        var totalAusentesIds = ausentesVacaciones
-                            .Union(ausentesPermisos)
-                            .Union(ausentesFestivos)
-                            .Distinct()
+                        var totalAusentes = empleadosConVacacion
+                            .Union(empleadosConPermiso)
+                            .Union(empleadosConFestivo)
                             .Count();
 
-                        var porcentaje = ((decimal)totalAusentesIds / totalEmpleadosArea) * 100m;
-                        porcentajesDelDia[s.Id] = Math.Round(porcentaje, 2);
+                        porcentajesDelDia[s.Id] = Math.Round(((decimal)totalAusentes / totalEmpleadosArea) * 100m, 2);
                     }
                     catch (Exception ex)
                     {
