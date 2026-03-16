@@ -829,5 +829,32 @@ namespace tiempo_libre.Services
                     $"Error inesperado: {ex.Message}");
             }
         }
+
+        public async Task<ApiResponse<object>> CancelarSolicitudAsync(int solicitudId, int usuarioId)
+        {
+            var solicitud = await _db.SolicitudesReprogramacion
+                .FirstOrDefaultAsync(s => s.Id == solicitudId);
+
+            if (solicitud == null)
+                return new ApiResponse<object>(false, null, "Solicitud no encontrada");
+
+            if (solicitud.EstadoSolicitud != "Pendiente")
+                return new ApiResponse<object>(false, null, "Solo se pueden cancelar solicitudes pendientes");
+
+            if (solicitud.SolicitadoPorId != usuarioId)
+            {
+                var usuario = await _db.Users.Include(u => u.Roles).FirstOrDefaultAsync(u => u.Id == usuarioId);
+                bool esSuperUsuario = usuario?.Roles.Any(r => r.Name == "SuperUsuario") ?? false;
+                if (!esSuperUsuario)
+                    return new ApiResponse<object>(false, null, "No tienes permiso para cancelar esta solicitud");
+            }
+
+            solicitud.EstadoSolicitud = "Cancelada";
+            solicitud.FechaRespuesta = DateTime.Now;
+            solicitud.UpdatedAt = DateTime.Now;
+            await _db.SaveChangesAsync();
+
+            return new ApiResponse<object>(true, null, "Solicitud cancelada correctamente");
+        }
     }
 }

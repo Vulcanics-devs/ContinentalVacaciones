@@ -422,5 +422,29 @@ namespace tiempo_libre.Controllers
                 return StatusCode(500, new ApiResponse<object>(false, null, $"Error inesperado: {ex.Message}"));
             }
         }
+
+        [HttpPost("cancelar/{id}")]
+        [Authorize]
+        public async Task<IActionResult> CancelarSolicitud(int id)
+        {
+            try
+            {
+                var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var usuarioId))
+                    return Unauthorized(new ApiResponse<object>(false, null, "No se pudo identificar el usuario"));
+
+                var response = await _reprogramacionService.CancelarSolicitudAsync(id, usuarioId);
+
+                if (!response.Success)
+                    return BadRequest(response);
+
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al cancelar solicitud {Id}", id);
+                return StatusCode(500, new ApiResponse<object>(false, null, $"Error inesperado: {ex.Message}"));
+            }
+        }
     }
 }

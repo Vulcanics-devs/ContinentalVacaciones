@@ -25,7 +25,7 @@ import { PeriodOptions } from "@/interfaces/Calendar.interface";
 import { UserRole } from "@/interfaces/User.interface";
 import { solicitudesPermisosService } from "@/services/solicitudesPermisosService";
 
-export type RequestStatus = "approved" | "rejected" | "pending";
+export type RequestStatus = "approved" | "rejected" | "pending" | "cancelled";
 export type RequestType = "day_exchange" | "holiday_worked" | "permission_request";
 
 export interface VacationRequest {
@@ -52,7 +52,8 @@ export interface VacationRequest {
 const mapSolicitudToRequest = (solicitud: SolicitudReprogramacion): VacationRequest => {
     const status: RequestStatus =
         solicitud.estadoSolicitud === 'Aprobada' ? 'approved' :
-            solicitud.estadoSolicitud === 'Rechazada' ? 'rejected' : 'pending';
+            solicitud.estadoSolicitud === 'Rechazada' ? 'rejected':
+            solicitud.estadoSolicitud === 'Cancelada' ? 'cancelled' : 'pending';
 
     return {
         id: solicitud.id.toString(),
@@ -328,6 +329,18 @@ const MyRequests = () => {
 
     const handleExportPDF = () => {
         setExportOpen(false);
+    };
+
+    const handleCancelarSolicitud = async (request: VacationRequest) => {
+        if (!confirm('¿Estás seguro de que deseas cancelar esta solicitud?')) return;
+        try {
+            await ReprogramacionService.cancelarSolicitud(parseInt(request.id));
+            setRequests(prev => prev.map(r =>
+                r.id === request.id ? { ...r, status: 'cancelled' as RequestStatus } : r
+            ));
+        } catch (error) {
+            alert('Error al cancelar la solicitud. Intente nuevamente.');
+        }
     };
 
     return (
@@ -608,6 +621,18 @@ const MyRequests = () => {
                                                     </div>
                                                 </div>
                                             )}
+                                            {isDelegadoSindical &&
+                                                request.type === "day_exchange" &&
+                                                request.status === "pending" && (
+                                                    <div className="mt-4 flex justify-end">
+                                                        <button
+                                                            onClick={() => handleCancelarSolicitud(request)}
+                                                            className="px-4 py-2 text-sm font-medium text-red-600 border border-red-300 rounded-md hover:bg-red-50"
+                                                        >
+                                                            Cancelar solicitud
+                                                        </button>
+                                                    </div>
+                                                )}
                                         </div>
 
                                         {request.type === "day_exchange" &&
@@ -766,6 +791,8 @@ export const getStatusText = (status: RequestStatus) => {
             return "Rechazada";
         case "pending":
             return "Pendiente";
+        case "cancelled":
+            return "Cancelada";
     }
 };
 
@@ -777,6 +804,8 @@ export const getStatusColor = (status: RequestStatus) => {
             return "bg-red-100 text-red-800";
         case "pending":
             return "bg-yellow-100 text-yellow-800";
+        case "cancelled":
+            return "bg-gray-100 text-gray-700";
     }
 };
 
