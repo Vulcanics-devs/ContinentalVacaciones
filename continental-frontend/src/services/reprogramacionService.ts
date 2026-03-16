@@ -212,4 +212,15 @@ export class ReprogramacionService {
             throw new Error('Error al solicitar la reprogramación. Por favor intente nuevamente.');
         }
     }
+
+    static async cancelarSolicitud(solicitudId: number): Promise<void> {
+        const response = await httpClient.post<ApiResponse<any>>(
+            `/api/reprogramacion/cancelar/${solicitudId}`,
+            {},
+            { timeout: 30000 }
+        );
+        if (!response.success) {
+            throw new Error(response.errorMsg || 'Error al cancelar la solicitud');
+        }
+    }
 }
