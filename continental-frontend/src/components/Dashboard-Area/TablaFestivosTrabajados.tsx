@@ -122,6 +122,11 @@ export function TablaFestivosTrabajados() {
         }
     }
 
+    const refetchSolicitudes = useCallback(() => {
+        lastFetchedFiltersRef.current = ''
+        fetchSolicitudes()
+    }, [fetchSolicitudes])
+
     const handleApproveConfirm = async () => {
         if (!selectedSolicitudForApprove) return
         try {
@@ -130,7 +135,7 @@ export function TablaFestivosTrabajados() {
                 aprobada: true
             })
             toast.success('Solicitud aprobada exitosamente')
-            fetchSolicitudes()
+            refetchSolicitudes()
         } catch (error) {
             toast.error('Error al aprobar solicitud')
         }
@@ -147,7 +152,7 @@ export function TablaFestivosTrabajados() {
                 motivoRechazo: motivo
             })
             toast.success('Solicitud rechazada')
-            fetchSolicitudes()
+            refetchSolicitudes()
         } catch (error) {
             toast.error('Error al rechazar solicitud')
         }
@@ -360,13 +365,13 @@ export function TablaFestivosTrabajados() {
                     {loading || loadingUserData ? (
                         <div className="p-8 text-center"><div className="text-gray-600">Cargando solicitudes...</div></div>
                     ) : (
-                            <DataTable<SolicitudFestivoTrabajado> columns={columns}
-                                data={filteredSolicitudes}
-                                keyField="id"
-                                emptyMessage="No hay solicitudes de festivos trabajados"
-                                onSort={() => { }}
-                                className="border-t border-gray-200"
-                            />
+                        <DataTable<SolicitudFestivoTrabajado> columns={columns}
+                            data={filteredSolicitudes}
+                            keyField="id"
+                            emptyMessage="No hay solicitudes de festivos trabajados"
+                            onSort={() => { }}
+                            className="border-t border-gray-200"
+                        />
                     )}
                 </div>
             </section>

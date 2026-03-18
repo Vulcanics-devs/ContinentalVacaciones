@@ -5,7 +5,7 @@ import { Summary } from "./RequestVacations";
 import { useEffect, useState } from "react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import { format, parseISO } from "date-fns";
+import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { CalendarPlus2, ChevronLeft, Download, Key, FileText } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -15,6 +15,7 @@ import useAuth from "@/hooks/useAuth";
 import { getVacacionesAsignadasPorEmpleado } from "@/services/vacacionesService";
 import { ReprogramacionService } from "@/services/reprogramacionService";
 import { festivosTrabajadosService, type FestivoTrabajado } from "@/services/festivosTrabajadosService";
+import { validarFestivoParaSolicitud, validarFechaDeUso, calcularFechaMaximaUso } from "@/utils/festivosTrabajadosValidation";
 import type { VacacionesAsignadasResponse, VacacionAsignada } from "@/interfaces/Api.interface";
 import { useSearchParams } from "react-router-dom";
 import { Textarea } from "@/components/ui/textarea";
@@ -664,18 +665,61 @@ export const RequestModal = ({
     const [motivo, setMotivo] = useState('');
     const [loading, setLoading] = useState(false);
     const [loadingFestivos, setLoadingFestivos] = useState(false);
+    const [validationAlert, setValidationAlert] = useState<string | null>(null);
+    const [validationWarning, setValidationWarning] = useState<string | null>(null);
+    const [fechaUsoError, setFechaUsoError] = useState<string | null>(null);
+    const [festivoExpired, setFestivoExpired] = useState(false);
+
+    // Validar festivo seleccionado
+    const selectedFestivoData = selectedFestivo
+        ? festivosDisponibles.find(x => x.id === selectedFestivo)
+        : null;
 
     const fechaMaxima = (() => {
-        if (!selectedFestivo) return new Date(anioVigente + 2, 11, 31).toISOString().split('T')[0];
-        const f = festivosDisponibles.find(x => x.id === selectedFestivo);
-        if (!f) return new Date(anioVigente + 2, 11, 31).toISOString().split('T')[0];
-        const partes = f.festivoTrabajado.split('-');
-        const fechaTrabajada = new Date(parseInt(partes[0]), parseInt(partes[1]) - 1, parseInt(partes[2]));
-        const limite = new Date(fechaTrabajada);
-        limite.setFullYear(limite.getFullYear() + 1);
-        limite.setMonth(limite.getMonth() + 1);
-        return limite.toISOString().split('T')[0];
+        if (!selectedFestivoData) return new Date(anioVigente + 2, 11, 31).toISOString().split('T')[0];
+        return calcularFechaMaximaUso(selectedFestivoData.festivoTrabajado);
     })();
+
+    // Validar cuando se selecciona un festivo
+    const handleFestivoChange = (festivoId: number | null) => {
+        setSelectedFestivo(festivoId);
+        setValidationAlert(null);
+        setValidationWarning(null);
+        setFechaUsoError(null);
+        setFestivoExpired(false);
+        setFechaNueva('');
+
+        if (!festivoId) return;
+
+        const festivo = festivosDisponibles.find(x => x.id === festivoId);
+        if (!festivo) return;
+
+        const validation = validarFestivoParaSolicitud(festivo.festivoTrabajado);
+
+        if (validation.isExpired) {
+            setValidationAlert(validation.alertMessage || null);
+            setFestivoExpired(true);
+        } else if (validation.isCloseToDeadline) {
+            setValidationWarning(validation.warningMessage || null);
+        }
+    };
+
+    // Validar cuando se selecciona fecha de uso
+    const handleFechaChange = (fecha: string) => {
+        setFechaNueva(fecha);
+        setFechaUsoError(null);
+
+        if (!fecha || !selectedFestivoData) return;
+
+        const usoValidation = validarFechaDeUso(
+            selectedFestivoData.festivoTrabajado,
+            fecha
+        );
+
+        if (!usoValidation.isValid) {
+            setFechaUsoError(usoValidation.message || null);
+        }
+    };
 
     // Cargar festivos disponibles cuando se abre el modal
     useEffect(() => {
@@ -686,11 +730,9 @@ export const RequestModal = ({
                 const response = await festivosTrabajadosService.getFestivosDisponibles(
                     empleadoId,
                     undefined,
-                    anioVigente ,
+                    anioVigente,
                     true // Solo disponibles
                 );
-                console.log("Festivos disponibles:")
-                console.log({ response })
                 setFestivosDisponibles(response.festivos);
 
                 if (response.festivosDisponibles === 0) {
@@ -713,6 +755,16 @@ export const RequestModal = ({
             return;
         }
 
+        if (festivoExpired) {
+            toast.error('Este festivo trabajado ya expiró y no puede ser solicitado.');
+            return;
+        }
+
+        if (fechaUsoError) {
+            toast.error('La fecha de uso seleccionada no es válida.');
+            return;
+        }
+
         setLoading(true);
         try {
             await festivosTrabajadosService.intercambiarFestivo({
@@ -729,9 +781,13 @@ export const RequestModal = ({
             setSelectedFestivo(null);
             setFechaNueva('');
             setMotivo('');
-        } catch (error) {
+            setValidationAlert(null);
+            setValidationWarning(null);
+            setFechaUsoError(null);
+            setFestivoExpired(false);
+        } catch (error: any) {
             console.error('Error submitting request:', error);
-            toast.error('Error al enviar la solicitud');
+            toast.error(error.message || 'Error al enviar la solicitud');
         } finally {
             setLoading(false);
         }
@@ -741,6 +797,10 @@ export const RequestModal = ({
         setSelectedFestivo(null);
         setFechaNueva('');
         setMotivo('');
+        setValidationAlert(null);
+        setValidationWarning(null);
+        setFechaUsoError(null);
+        setFestivoExpired(false);
         onClose();
     };
 
@@ -779,40 +839,51 @@ export const RequestModal = ({
                                     <label className="block text-sm font-medium text-gray-700">
                                         Festivo Trabajado Disponible
                                     </label>
-                                            <select
-                                                value={selectedFestivo || ''}
-                                                onChange={(e) => setSelectedFestivo(e.target.value ? Number(e.target.value) : null)}
-                                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                disabled={loading}
-                                            >
-                                                <option value="">Selecciona un festivo trabajado</option>
-                                                {festivosDisponibles.map((festivo) => {
-                                                    // ✅ CAMBIO: Parsear la fecha correctamente
-                                                    const fechaPartes = festivo.festivoTrabajado.split('-');
-                                                    const fecha = new Date(
-                                                        parseInt(fechaPartes[0]),
-                                                        parseInt(fechaPartes[1]) - 1,
-                                                        parseInt(fechaPartes[2])
-                                                    );
+                                    <select
+                                        value={selectedFestivo || ''}
+                                        onChange={(e) => handleFestivoChange(e.target.value ? Number(e.target.value) : null)}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        disabled={loading}
+                                    >
+                                        <option value="">Selecciona un festivo trabajado</option>
+                                        {festivosDisponibles.map((festivo) => {
+                                            const fechaPartes = festivo.festivoTrabajado.split('-');
+                                            const fecha = new Date(
+                                                parseInt(fechaPartes[0]),
+                                                parseInt(fechaPartes[1]) - 1,
+                                                parseInt(fechaPartes[2])
+                                            );
 
-                                                    return (
-                                                        <option key={festivo.id} value={festivo.id}>
-                                                            {fecha.toLocaleDateString('es-MX', {
-                                                                day: 'numeric',
-                                                                month: 'long',
-                                                                year: 'numeric',
-                                                                timeZone: 'UTC' // ✅ IMPORTANTE: Usar UTC para evitar cambios de zona horaria
-                                                            })}
-                                                            {' - '}
-                                                            {festivo.nombreEmpleado}
-                                                            {' ('}
-                                                            {festivo.diaSemana}
-                                                            {')'}
-                                                        </option>
-                                                    );
-                                                })}
-                                            </select>
+                                            return (
+                                                <option key={festivo.id} value={festivo.id}>
+                                                    {fecha.toLocaleDateString('es-MX', {
+                                                        day: 'numeric',
+                                                        month: 'long',
+                                                        year: 'numeric',
+                                                        timeZone: 'UTC'
+                                                    })}
+                                                    {' - '}
+                                                    {festivo.nombreEmpleado}
+                                                    {' ('}
+                                                    {festivo.diaSemana}
+                                                    {')'}
+                                                </option>
+                                            );
+                                        })}
+                                    </select>
                                 </div>
+
+                                {validationAlert && (
+                                    <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                                        <p className="text-sm text-red-800">{validationAlert}</p>
+                                    </div>
+                                )}
+
+                                {validationWarning && (
+                                    <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                                        <p className="text-sm text-amber-800">{validationWarning}</p>
+                                    </div>
+                                )}
 
                                 <div className="mb-4 flex flex-col gap-2">
                                     <label className="block text-sm font-medium text-gray-700">
@@ -821,11 +892,14 @@ export const RequestModal = ({
                                     <Input
                                         type="date"
                                         value={fechaNueva}
-                                        onChange={(e) => setFechaNueva(e.target.value)}
-                                        disabled={loading}
-                                        min={new Date(anioVigente, 0, 1).toISOString().split('T')[0]} // minimo anioVigente 
+                                        onChange={(e) => handleFechaChange(e.target.value)}
+                                        disabled={loading || festivoExpired}
+                                        min={new Date(anioVigente, 0, 1).toISOString().split('T')[0]}
                                         max={fechaMaxima}
                                     />
+                                    {fechaUsoError && (
+                                        <p className="text-xs text-red-600 mt-1">{fechaUsoError}</p>
+                                    )}
                                 </div>
 
                                 <div className="mb-4 flex flex-col gap-2">
@@ -838,7 +912,7 @@ export const RequestModal = ({
                                         placeholder="Describe el motivo de tu solicitud..."
                                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                                         rows={3}
-                                        disabled={loading}
+                                        disabled={loading || festivoExpired}
                                     />
                                 </div>
                             </>
@@ -858,7 +932,7 @@ export const RequestModal = ({
                             className="cursor-pointer"
                             variant="continental"
                             onClick={onSubmit}
-                            disabled={loading || !selectedFestivo || !fechaNueva || festivosDisponibles.length === 0}
+                            disabled={loading || !selectedFestivo || !fechaNueva || festivosDisponibles.length === 0 || festivoExpired || !!fechaUsoError}
                         >
                             {loading ? 'Enviando...' : 'Solicitar Intercambio'}
                         </Button>
