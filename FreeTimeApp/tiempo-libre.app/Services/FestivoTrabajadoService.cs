@@ -395,6 +395,7 @@ namespace tiempo_libre.Services
                         .ThenInclude(e => e.Grupo)
                     .Include(s => s.JefeArea)
                     .Include(s => s.AprobadoPor)
+                    .Include(s => s.SolicitadoPor)
                     .AsQueryable();
 
                 // Aplicar filtros

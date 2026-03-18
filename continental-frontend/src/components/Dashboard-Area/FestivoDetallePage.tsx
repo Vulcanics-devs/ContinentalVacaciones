@@ -358,7 +358,7 @@ export default function FestivoDetallePage() {
                                 )}
                                 <div>
                                     <span className="text-sm text-gray-500">Solicitado por:</span>
-                                    <p className="font-medium">{solicitud.solicitadoPor || 'No especificado'}</p>
+                                    <p className="font-medium">{(solicitud as any).solicitadoPor || 'No especificado'}</p>
                                 </div>
                             </div>
                         </div>

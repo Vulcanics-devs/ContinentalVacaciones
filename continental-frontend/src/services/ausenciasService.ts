@@ -38,8 +38,7 @@ class AusenciasService {
         try {
             const apiResponse = await httpClient.post<AusenciasResponse>(
                 `${this.baseUrl}/calcular`,
-                request,
-                { signal }  // pasa el signal si tu httpClient lo soporta
+                request
             );
             return apiResponse as unknown as AusenciasResponse;
         } catch (error: any) {

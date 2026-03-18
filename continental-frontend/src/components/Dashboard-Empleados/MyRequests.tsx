@@ -50,11 +50,11 @@ export interface VacationRequest {
 
 // Función para mapear SolicitudReprogramacion a VacationRequest
 const mapSolicitudToRequest = (solicitud: SolicitudReprogramacion): VacationRequest => {
+    const rawEstado = solicitud.estadoSolicitud as string;
     const status: RequestStatus =
-        solicitud.estadoSolicitud === 'Aprobada' ? 'approved' :
-            solicitud.estadoSolicitud === 'Rechazada' ? 'rejected':
-            solicitud.estadoSolicitud === 'Cancelada' ? 'cancelled' : 'pending';
-
+        rawEstado === 'Aprobada' ? 'approved' :
+            rawEstado === 'Rechazada' ? 'rejected' :
+                rawEstado === 'Cancelada' ? 'cancelled' : 'pending';
     return {
         id: solicitud.id.toString(),
         type: "day_exchange",
