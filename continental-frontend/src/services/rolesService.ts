@@ -3,7 +3,7 @@ import type { ApiResponse } from '@/interfaces/Api.interface';
 
 export interface WeeklyRoleEntry {
     fecha: string; // YYYY-MM-DD
-    codigoTurno: 'D' | '1' | '2' | '3' | 'V' | string;
+    codigoTurno: 'D' | '1' | '2' | '3' | 'V'| 'F' | string;
     empleado: {
         id: number;
         nomina: string;

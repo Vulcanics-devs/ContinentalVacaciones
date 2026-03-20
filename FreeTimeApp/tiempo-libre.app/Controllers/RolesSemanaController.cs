@@ -181,6 +181,18 @@ namespace tiempo_libre.Controllers
                     }
                 }
 
+                var festivosAprobados = await _db.SolicitudesFestivosTrabajados
+                    .Where(f => f.FechaNuevaSolicitada >= DateOnly.FromDateTime(inicio) &&
+                                f.FechaNuevaSolicitada <= DateOnly.FromDateTime(fin) &&
+                                f.EstadoSolicitud == "Aprobada" &&
+                                empleadosIds.Contains(f.EmpleadoId))
+                    .Select(f => new { f.EmpleadoId, f.FechaNuevaSolicitada })
+                    .ToListAsync();
+
+                var festivosSet = new HashSet<(int empleadoId, string fecha)>(
+                    festivosAprobados.Select(f => (f.EmpleadoId, f.FechaNuevaSolicitada.ToString("yyyy-MM-dd")))
+                    );
+
                 // Para cada empleado y cada día de la semana, asegurar una entrada
                 foreach (var emp in empleados)
                 {
@@ -303,11 +315,16 @@ namespace tiempo_libre.Controllers
 
                 foreach (var entry in semana)
                 {
-                    if (vacacionesSet.Contains((entry.Empleado.Id, entry.Fecha))
-                        && turnosNormales.Contains(entry.CodigoTurno))
+                    if (turnosNormales.Contains(entry.CodigoTurno))
                     {
-                        // Solo sobreescribir con "V" si NO tiene ya un permiso/incapacidad asignado
+                        if(festivosSet.Contains((entry.Empleado.Id, entry.Fecha)))
+                        {
+                            entry.CodigoTurno = "F";
+                        }
+                        else if(vacacionesSet.Contains((entry.Empleado.Id, entry.Fecha))){
+
                         entry.CodigoTurno = "V";
+                        }
                     }
                 }
 

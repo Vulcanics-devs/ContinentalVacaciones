@@ -658,6 +658,8 @@ useEffect(() => {
                                                                                         ? "bg-rose-100 text-rose-700"
                                                                                         : shift === "S"
                                                                                             ? "bg-slate-100 text-slate-700"
+                                                                                            : shift === "F"
+                                                                                            ? "bg-teal-100 text-teal-700"
                                                                                             : shift === "O"
                                                                                                 ? "bg-cyan-100 text-cyan-700"
                                                                                                 : shift === "H"
@@ -739,6 +741,10 @@ useEffect(() => {
                     <div className="flex items-center gap-2">
                         <span className="inline-flex items-center justify-center rounded-full px-3 py-1 bg-indigo-100 text-indigo-700 font-semibold">H</span>
                         <span className="text-gray-600">Perm. sin Goce (Alt)</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center justify-center rounded-full px-3 py-1 bg-teal-100 text-teal-700 font-semibold">F</span>
+                        <span className="text-gray-600">Festivo Trabajado</span>
                     </div>
                 </div>
             </div>
