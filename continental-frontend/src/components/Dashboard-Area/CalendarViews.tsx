@@ -85,10 +85,10 @@ export const MonthlyView: React.FC<ViewProps> = ({ calendarData, currentDate, se
                     const groupsData = selectedGroups.length > 0
                         ? selectedGroups.map(groupIdStr => {
                             const groupId = parseInt(groupIdStr);
-                            
+
                             // Buscar datos reales de ausencias para este grupo
                             const grupoAusencias = ausenciasDelDia?.ausenciasPorGrupo.find(g => g.grupoId === groupId);
-                            
+
                             let percentage = 0;
                             if (grupoAusencias) {
                                 // Usar porcentaje real de ausencias
@@ -98,16 +98,16 @@ export const MonthlyView: React.FC<ViewProps> = ({ calendarData, currentDate, se
                                 const manningByGroupName = new Map(day.manning.map(m => [m.group, m.percentage]));
                                 percentage = manningByGroupName.get(groupIdStr) ?? day.averagePercentage;
                             }
-                            
-                            return { 
-                                id: groupIdStr, 
-                                name: labelFor(groupIdStr), 
+
+                            return {
+                                id: groupIdStr,
+                                name: labelFor(groupIdStr),
                                 percentage,
                                 ausenciasInfo: grupoAusencias // Información adicional de ausencias
                             };
                         })
                         : [];
-                    
+
                     const isSunday = dayDate.getDay() === 0;
                     const divisor = isSunday ? 2 : 3;
                     const totalPercentage = groupsData.length > 0
@@ -122,17 +122,16 @@ export const MonthlyView: React.FC<ViewProps> = ({ calendarData, currentDate, se
                     return (
                         <div
                             key={day.day}
-                            className={`calendar-cell bg-white relative ${
-                                hasExceededLimit ? 'border-2 border-red-500 bg-red-50' : 
-                                hasHighAbsence ? 'border-2 border-yellow-500 bg-yellow-50' : 
-                                hasAbsentEmployees ? 'border border-orange-300 bg-orange-50' : ''
-                            }`}
+                            className={`calendar-cell bg-white relative ${hasExceededLimit ? 'border-2 border-red-500 bg-red-50' :
+                                    hasHighAbsence ? 'border-2 border-yellow-500 bg-yellow-50' :
+                                        hasAbsentEmployees ? 'border border-orange-300 bg-orange-50' : ''
+                                }`}
                             style={{ minHeight: selectedGroups.length > 2 ? '130px' : '85px' }}
                             onClick={() => onSelectDate(new Date(currentDate.getFullYear(), currentDate.getMonth(), day.day))}
-                            title={ausenciasDelDia ? 
-                                `Fecha: ${dateString}\n${ausenciasDelDia.ausenciasPorGrupo.map(g => 
+                            title={ausenciasDelDia ?
+                                `Fecha: ${dateString}\n${ausenciasDelDia.ausenciasPorGrupo.map(g =>
                                     `${g.nombreGrupo}: ${g.porcentajeAusencia}% ausencia (${g.personalDisponible}/${g.personalTotal} disponible)`
-                                ).join('\n')}` : 
+                                ).join('\n')}` :
                                 'Sin datos de ausencias'
                             }
                         >
@@ -140,11 +139,10 @@ export const MonthlyView: React.FC<ViewProps> = ({ calendarData, currentDate, se
                                 <span className="text-sm font-semibold">{day.day}</span>
                                 {selectedGroups.length > 0 && (
                                     <div className="flex items-center gap-1">
-                                        <span className={`text-xs font-bold ${
-                                            hasExceededLimit ? 'text-red-700' :
-                                            hasHighAbsence ? 'text-yellow-700' :
-                                            'text-gray-700'
-                                        }`}>
+                                        <span className={`text-xs font-bold ${hasExceededLimit ? 'text-red-700' :
+                                                hasHighAbsence ? 'text-yellow-700' :
+                                                    'text-gray-700'
+                                            }`}>
                                             {totalPercentage.toFixed(1)}%
                                         </span>
                                         {hasExceededLimit && <span className="text-red-500 text-xs">⚠️</span>}
@@ -159,11 +157,10 @@ export const MonthlyView: React.FC<ViewProps> = ({ calendarData, currentDate, se
                                     {groupsData.map(group => (
                                         <div key={group.id} className="text-gray-600 truncate">
                                             <span className="font-medium">{group.name}:</span>
-                                            <span className={`ml-1 ${
-                                                group.ausenciasInfo?.excedeLimite ? 'text-red-600 font-bold' :
-                                                group.percentage > 3 ? 'text-yellow-600' :
-                                                'text-gray-700'
-                                            }`}>
+                                            <span className={`ml-1 ${group.ausenciasInfo?.excedeLimite ? 'text-red-600 font-bold' :
+                                                    group.percentage > 3 ? 'text-yellow-600' :
+                                                        'text-gray-700'
+                                                }`}>
                                                 {group.percentage.toFixed(1)}%
                                             </span>
                                             {group.ausenciasInfo && (
@@ -220,7 +217,7 @@ export const WeeklyView: React.FC<ViewProps> = ({ calendarData, currentDate, sel
             <div className="grid grid-cols-7">
                 {weekDays.map((date, index) => {
                     const dayData = calendarData.days.find(d => d.day === date.getDate());
-                    
+
                     // Obtener datos reales de ausencias para este día
                     const dateString = date.toISOString().split('T')[0];
                     const ausenciasDelDia = ausenciasData.find(a => a.fecha === dateString);
@@ -241,7 +238,7 @@ export const WeeklyView: React.FC<ViewProps> = ({ calendarData, currentDate, sel
                         ? selectedGroups.map(groupIdStr => {
                             const groupId = parseInt(groupIdStr);
                             const grupoAusencias = ausenciasDelDia?.ausenciasPorGrupo.find(g => g.grupoId === groupId);
-                            
+
                             let percentage = 0;
                             if (grupoAusencias) {
                                 percentage = grupoAusencias.porcentajeAusencia;
@@ -250,16 +247,16 @@ export const WeeklyView: React.FC<ViewProps> = ({ calendarData, currentDate, sel
                                 const manningByGroupName = new Map((dayData?.manning || []).map(m => [m.group, m.percentage]));
                                 percentage = manningByGroupName.get(groupIdStr) ?? dayData?.averagePercentage ?? 0;
                             }
-                            
-                            return { 
-                                id: groupIdStr, 
-                                name: labelFor(groupIdStr), 
+
+                            return {
+                                id: groupIdStr,
+                                name: labelFor(groupIdStr),
                                 percentage,
                                 ausenciasInfo: grupoAusencias
                             };
                         })
                         : [];
-                    
+
                     const isSunday = date.getDay() === 0;
                     const divisor = isSunday ? 2 : 3;
                     const totalPercentage = groupsData.length > 0
@@ -271,18 +268,17 @@ export const WeeklyView: React.FC<ViewProps> = ({ calendarData, currentDate, sel
                     const hasHighAbsence = totalPercentage > 3;
 
                     return (
-                        <div 
-                            onClick={() => onSelectDate(date)} 
-                            key={index} 
-                            className={`calendar-cell bg-white ${
-                                hasExceededLimit ? 'border-2 border-red-500 bg-red-50' : 
-                                hasHighAbsence ? 'border-2 border-yellow-500 bg-yellow-50' : ''
-                            }`} 
+                        <div
+                            onClick={() => onSelectDate(date)}
+                            key={index}
+                            className={`calendar-cell bg-white ${hasExceededLimit ? 'border-2 border-red-500 bg-red-50' :
+                                    hasHighAbsence ? 'border-2 border-yellow-500 bg-yellow-50' : ''
+                                }`}
                             style={{ minHeight: selectedGroups.length > 2 ? '160px' : '120px' }}
-                            title={ausenciasDelDia ? 
-                                `${date.toLocaleDateString('es-ES')}\n${ausenciasDelDia.ausenciasPorGrupo.map(g => 
+                            title={ausenciasDelDia ?
+                                `${date.toLocaleDateString('es-ES')}\n${ausenciasDelDia.ausenciasPorGrupo.map(g =>
                                     `${g.nombreGrupo}: ${g.porcentajeAusencia}% ausencia`
-                                ).join('\n')}` : 
+                                ).join('\n')}` :
                                 date.toLocaleDateString('es-ES')
                             }
                         >
@@ -290,11 +286,10 @@ export const WeeklyView: React.FC<ViewProps> = ({ calendarData, currentDate, sel
                                 <span className="text-sm font-semibold">{date.getDate()}</span>
                                 {selectedGroups.length > 0 && (
                                     <div className="flex items-center gap-1">
-                                        <span className={`text-xs font-bold ${
-                                            hasExceededLimit ? 'text-red-700' :
-                                            hasHighAbsence ? 'text-yellow-700' :
-                                            'text-gray-700'
-                                        }`}>
+                                        <span className={`text-xs font-bold ${hasExceededLimit ? 'text-red-700' :
+                                                hasHighAbsence ? 'text-yellow-700' :
+                                                    'text-gray-700'
+                                            }`}>
                                             {totalPercentage.toFixed(1)}%
                                         </span>
                                         {hasExceededLimit && <span className="text-red-500 text-xs">⚠️</span>}
@@ -307,11 +302,10 @@ export const WeeklyView: React.FC<ViewProps> = ({ calendarData, currentDate, sel
                                     {groupsData.map(group => (
                                         <div key={group.id} className="text-gray-600 truncate">
                                             <span className="font-medium">{group.name}:</span>
-                                            <span className={`ml-1 ${
-                                                group.ausenciasInfo?.excedeLimite ? 'text-red-600 font-bold' :
-                                                group.percentage > 3 ? 'text-yellow-600' :
-                                                'text-gray-700'
-                                            }`}>
+                                            <span className={`ml-1 ${group.ausenciasInfo?.excedeLimite ? 'text-red-600 font-bold' :
+                                                    group.percentage > 3 ? 'text-yellow-600' :
+                                                        'text-gray-700'
+                                                }`}>
                                                 {group.percentage.toFixed(1)}%
                                             </span>
                                         </div>
@@ -366,9 +360,9 @@ export const DailyView: React.FC<ViewProps> = ({ calendarData, currentDate, sele
                 id: emp.empleadoId.toString(),
                 nomina: emp.nomina?.toString() || 'N/A',
                 nombre: emp.nombreCompleto,
+                maquina: emp.maquina || '',
                 motivo: emp.tipoAusencia +
-                    (emp.tipoVacacion ? ` (${emp.tipoVacacion})` : '') +
-                    (emp.maquina ? ` - ${emp.maquina}` : '')
+                    (emp.tipoVacacion ? ` (${emp.tipoVacacion})` : '')
             }));
             console.log('DEBUG getPersonalData:', {
                 groupId,
@@ -427,12 +421,11 @@ export const DailyView: React.FC<ViewProps> = ({ calendarData, currentDate, sele
                         const groupName = labelFor(groupId);
                         const personalData = getPersonalData(groupId);
                         const stats = personalData.stats;
-                        
+
                         return (
                             <div key={groupId} className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                                <div className={`px-6 py-3 border-b border-gray-200 ${
-                                    stats?.excedeLimite ? 'bg-red-50' : 'bg-gray-50'
-                                }`}>
+                                <div className={`px-6 py-3 border-b border-gray-200 ${stats?.excedeLimite ? 'bg-red-50' : 'bg-gray-50'
+                                    }`}>
                                     <div className="flex justify-between items-center">
                                         <h3 className="text-lg font-semibold text-gray-900">{groupName}</h3>
                                         <div className="flex items-center gap-4">
@@ -446,11 +439,10 @@ export const DailyView: React.FC<ViewProps> = ({ calendarData, currentDate, sele
                                                     </div>
                                                     <div className="flex items-center gap-2">
                                                         <span className="text-sm text-gray-600">% Ausencia:</span>
-                                                        <span className={`text-sm font-semibold ${
-                                                            stats.excedeLimite ? 'text-red-600' : 
-                                                            stats.porcentajeAusencia > 3 ? 'text-yellow-600' : 
-                                                            'text-gray-900'
-                                                        }`}>
+                                                        <span className={`text-sm font-semibold ${stats.excedeLimite ? 'text-red-600' :
+                                                                stats.porcentajeAusencia > 3 ? 'text-yellow-600' :
+                                                                    'text-gray-900'
+                                                            }`}>
                                                             {stats.porcentajeAusencia.toFixed(1)}%
                                                         </span>
                                                         {stats.excedeLimite && (
@@ -467,7 +459,7 @@ export const DailyView: React.FC<ViewProps> = ({ calendarData, currentDate, sele
                                         </div>
                                     )}
                                 </div>
-                                
+
                                 <div className="grid md:grid-cols-2 gap-6 p-6">
                                     <div>
                                         <h4 className="text-lg font-semibold text-green-600 mb-4 flex items-center gap-2">
@@ -535,7 +527,10 @@ export const DailyView: React.FC<ViewProps> = ({ calendarData, currentDate, sele
                                                 personalData.noDisponible.map(persona => (
                                                     <div key={persona.id} className="flex items-start gap-3 p-3 bg-red-50 rounded border border-red-200">
                                                         <div className="flex-1">
-                                                            <div className="font-medium text-gray-900">{persona.nombre}</div>
+                                                            <div className="font-medium text-gray-900">
+                                                                {persona.nombre}
+                                                                {persona.maquina && <span className="ml-1 text-blue-600 font-medium">({persona.maquina})</span>}
+                                                            </div>
                                                             <div className="font-semibold text-gray-800 leading-tight">{persona.nomina}</div>
                                                             <div className="text-sm text-gray-600">ID: {persona.id}</div>
                                                             <div className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded mt-1 inline-block">

@@ -35,8 +35,8 @@ const WeeklyRoles = () => {
     const [selectedArea, setSelectedArea] = useState<number | "all">("all");
     const [weekStart, setWeekStart] = useState<Date>(getWeekStart(new Date()));
     const [weeklyData, setWeeklyData] = useState<WeeklyRolesResponse | null>(null);
-    const [groupEmployees, setGroupEmployees] = useState<{ id: number; nomina: string; fullName: string }[]>([]);
-    const [employeesCache] = useState<Map<number, { id: number; nomina: string; fullName: string }[]>>(new Map());
+    const [groupEmployees, setGroupEmployees] = useState<{ id: number; nomina: string; fullName: string; maquina?: string }[]>([]);
+    const [employeesCache] = useState<Map<number, { id: number; nomina: string; fullName: string; maquina?: string }[]>>(new Map());
     const [weeklyCache] = useState<Map<string, WeeklyRolesResponse>>(new Map());
     const [loadingGroups, setLoadingGroups] = useState(false);
     const [loadingWeek, setLoadingWeek] = useState(false);
@@ -82,7 +82,7 @@ const WeeklyRoles = () => {
 
                 if (isAdmin) {
                     allowedAreas = allAreas;
-                } else if(isBoss) {
+                } else if (isBoss) {
                     allowedAreas = allAreas.filter(
                         (a) =>
                             (a.jefe?.id != null && jefeId != null && a.jefe.id === jefeId) ||
@@ -217,6 +217,7 @@ const WeeklyRoles = () => {
                     id: u.id,
                     nomina: u.nomina?.toString() || u.username || "",
                     fullName: u.fullName || "",
+                    maquina: u.maquina || "",
                 }));
 
                 emps.sort((a, b) => {
@@ -245,52 +246,53 @@ const WeeklyRoles = () => {
     }, [selectedGroup, isBoss, isIndustrial]);
 
     // Cargar empleados del grupo seleccionado
-useEffect(() => {
-    const loadEmployees = async () => {
-        if (!selectedGroup) return;
-        
-        // ✅ Si es jefe, NO usar cache para evitar datos obsoletos
-        if (!isBoss) {
-            const cached = employeesCache.get(parseInt(selectedGroup, 10));
-            if (cached) {
-                setGroupEmployees(cached);
-                return;
-            }
-        }
+    useEffect(() => {
+        const loadEmployees = async () => {
+            if (!selectedGroup) return;
 
-        setLoadingEmployees(true);
-        try {
-            const resp = await empleadosService.getEmpleadosSindicalizados({
-                GrupoId: parseInt(selectedGroup, 10),
-                PageSize: 500,
-            });
-            const emps = (resp.usuarios || []).map((u) => ({
-                id: u.id,
-                nomina: u.nomina?.toString() || u.username || "",
-                fullName: u.fullName || "",
-            }));
-            emps.sort((a, b) => {
-                const na = parseInt(a.nomina, 10);
-                const nb = parseInt(b.nomina, 10);
-                if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
-                return a.nomina.localeCompare(b.nomina);
-            });
-            setGroupEmployees(emps);
-            
-            // Solo cachear si NO es jefe
+            // ✅ Si es jefe, NO usar cache para evitar datos obsoletos
             if (!isBoss) {
-                employeesCache.set(parseInt(selectedGroup, 10), emps);
+                const cached = employeesCache.get(parseInt(selectedGroup, 10));
+                if (cached) {
+                    setGroupEmployees(cached);
+                    return;
+                }
             }
-        } catch (error) {
-            console.error("Error cargando empleados del grupo", error);
-            toast.error("No se pudieron cargar los empleados del grupo.");
-            setGroupEmployees([]);
-        } finally {
-            setLoadingEmployees(false);
-        }
-    };
-    loadEmployees();
-}, [selectedGroup, isBoss]); // ✅ Agregar isBoss como dependencia
+
+            setLoadingEmployees(true);
+            try {
+                const resp = await empleadosService.getEmpleadosSindicalizados({
+                    GrupoId: parseInt(selectedGroup, 10),
+                    PageSize: 500,
+                });
+                const emps = (resp.usuarios || []).map((u) => ({
+                    id: u.id,
+                    nomina: u.nomina?.toString() || u.username || "",
+                    fullName: u.fullName || "",
+                    maquina: u.maquina || "",
+                }));
+                emps.sort((a, b) => {
+                    const na = parseInt(a.nomina, 10);
+                    const nb = parseInt(b.nomina, 10);
+                    if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
+                    return a.nomina.localeCompare(b.nomina);
+                });
+                setGroupEmployees(emps);
+
+                // Solo cachear si NO es jefe
+                if (!isBoss) {
+                    employeesCache.set(parseInt(selectedGroup, 10), emps);
+                }
+            } catch (error) {
+                console.error("Error cargando empleados del grupo", error);
+                toast.error("No se pudieron cargar los empleados del grupo.");
+                setGroupEmployees([]);
+            } finally {
+                setLoadingEmployees(false);
+            }
+        };
+        loadEmployees();
+    }, [selectedGroup, isBoss]); // ✅ Agregar isBoss como dependencia
 
     const weekDays = useMemo(() => buildWeekDays(weekStart), [weekStart]);
     const weekLabel = useMemo(() => {
@@ -396,6 +398,7 @@ useEffect(() => {
                     id: u.id,
                     nomina: u.nomina?.toString() || u.username || "",
                     fullName: u.fullName || "",
+                    maquina: u.maquina || "",
                 }));
 
                 payloads.push({
@@ -447,6 +450,7 @@ useEffect(() => {
                     id: u.id,
                     nomina: u.nomina?.toString() || u.username || "",
                     fullName: u.fullName || "",
+                    maquina: u.maquina || "",
                 }));
 
                 let cursor = new Date(firstWeek);
@@ -544,7 +548,7 @@ useEffect(() => {
                         onChange={(e) => setSelectedArea(e.target.value === "all" ? "all" : parseInt(e.target.value, 10))}
                         disabled={loadingGroups}
                     >
-                        {(isAdmin ||(!isBoss && !isIndustrial)) && <option value="all">Todas</option>}
+                        {(isAdmin || (!isBoss && !isIndustrial)) && <option value="all">Todas</option>}
                         {uniqueAreas.map((a) => (
                             <option key={a.id ?? "na"} value={a.id ?? ""}>
                                 {a.name}
@@ -629,7 +633,10 @@ useEffect(() => {
                                 <tr key={emp.id} className="border-t border-gray-100">
                                     <td className="px-4 py-2">
                                         <div className="font-semibold text-gray-800 leading-tight">{emp.nomina}</div>
-                                        <div className="text-xs text-gray-600 uppercase">{emp.fullName}</div>
+                                        <div className="text-xs text-gray-600 uppercase">
+                                            {emp.fullName}
+                                            {emp.maquina && <span className="ml-1 text-blue-600 font-medium">({emp.maquina})</span>}
+                                        </div>
                                     </td>
                                     {weekDays.map((day, idx) => {
                                         const shift = getShiftForDay(emp, day);
@@ -659,12 +666,12 @@ useEffect(() => {
                                                                                         : shift === "S"
                                                                                             ? "bg-slate-100 text-slate-700"
                                                                                             : shift === "F"
-                                                                                            ? "bg-teal-100 text-teal-700"
-                                                                                            : shift === "O"
-                                                                                                ? "bg-cyan-100 text-cyan-700"
-                                                                                                : shift === "H"
-                                                                                                    ? "bg-indigo-100 text-indigo-700"
-                                                                                                    : "bg-slate-100 text-slate-600";
+                                                                                                ? "bg-teal-100 text-teal-700"
+                                                                                                : shift === "O"
+                                                                                                    ? "bg-cyan-100 text-cyan-700"
+                                                                                                    : shift === "H"
+                                                                                                        ? "bg-indigo-100 text-indigo-700"
+                                                                                                        : "bg-slate-100 text-slate-600";
 
                                         return (
                                             <td key={idx} className="px-3 py-2 text-center">
