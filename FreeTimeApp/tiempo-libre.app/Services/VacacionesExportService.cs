@@ -273,7 +273,7 @@ namespace tiempo_libre.Services
             DateTime? fechaResolucionDesde = null,
             DateTime? fechaResolucionHasta = null)
         {
-            return await GenerarReporteSapReprogramacionBaseAsync(year, true, areaId, gruposRol);
+            return await GenerarReporteSapReprogramacionBaseAsync(year, true, areaId, gruposRol, fechaResolucionDesde, fechaResolucionHasta);
         }
 
         /// <summary>
@@ -286,7 +286,7 @@ namespace tiempo_libre.Services
             DateTime? fechaResolucionDesde = null,
             DateTime? fechaResolucionHasta = null)
         {
-            return await GenerarReporteSapReprogramacionBaseAsync(year, false, areaId, gruposRol);
+            return await GenerarReporteSapReprogramacionBaseAsync(year, false, areaId, gruposRol, fechaResolucionDesde, fechaResolucionHasta);
         }
 
         private async Task<(MemoryStream Stream, string FileName)> GenerarReporteSapReprogramacionBaseAsync(
@@ -340,7 +340,7 @@ namespace tiempo_libre.Services
 
                 if (datos.Count == 0)
                 {
-                     _logger.LogWarning("No se encontraron reprogramaciones para el año {Year}. Generando archivo vacío.", year);
+                    _logger.LogWarning("No se encontraron reprogramaciones para el año {Year}. Generando archivo vacío.", year);
                 }
                 else
                 {

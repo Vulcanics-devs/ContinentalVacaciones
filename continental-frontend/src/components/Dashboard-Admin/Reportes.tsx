@@ -535,36 +535,67 @@ export const Reportes = () => {
             }
         }
         else if (reportId === 15) {
-        try {
-            const loadingToast = toast.loading("Generando Reporte de Festivos Trabajados...");
+            try {
+                const loadingToast = toast.loading("Generando Reporte de Festivos Trabajados...");
 
-            const areaIdFilter = selectedArea ? parseInt(selectedArea) : undefined;
+                const areaIdFilter = selectedArea ? parseInt(selectedArea) : undefined;
 
-            const solicitudes = await festivosTrabajadosService.getSolicitudes({
-                estado: 'Aprobada',
-                areaId: areaIdFilter,
-            });
+                let solicitudes = await festivosTrabajadosService.getSolicitudes({
+                    estado: 'Aprobada',
+                    areaId: areaIdFilter,
+                });
 
-            toast.dismiss(loadingToast);
+                // Filtro de fecha y hora (client-side, igual que General de Reprogramaciones)
+                if (hasDateFilter() || timeFrom || timeTo) {
+                    solicitudes = solicitudes.filter((solicitud) => {
+                        const fechaResolucion = solicitud.fechaAprobacion
+                            ? new Date(solicitud.fechaAprobacion)
+                            : null;
+                        if (!fechaResolucion) return false;
 
-            if (!solicitudes.length) {
-                toast.info("No hay festivos trabajados aprobados con los filtros seleccionados.");
-                return;
+                        if (dateFilterMode === 'single' && singleDate) {
+                            const start = buildTimestamp(singleDate, timeFrom || "00:00");
+                            const end = buildTimestamp(singleDate, timeTo || "23:59");
+                            return fechaResolucion >= start && fechaResolucion <= end;
+                        }
+
+                        if (dateFilterMode === 'range') {
+                            let cumple = true;
+                            if (dateRangeFrom) {
+                                const start = buildTimestamp(dateRangeFrom, timeFrom || "00:00");
+                                cumple = cumple && fechaResolucion >= start;
+                            }
+                            if (dateRangeTo) {
+                                const end = buildTimestamp(dateRangeTo, timeTo || "23:59");
+                                cumple = cumple && fechaResolucion <= end;
+                            }
+                            return cumple;
+                        }
+
+                        return true;
+                    });
+                }
+
+                toast.dismiss(loadingToast);
+
+                if (!solicitudes.length) {
+                    toast.info("No hay festivos trabajados aprobados con los filtros seleccionados.");
+                    return;
+                }
+
+                const { exportarExcelFestivosTrabajados } = await import("@/utils/festivosTrabajadosExcel");
+                const areaName = selectedArea
+                    ? areas.find(a => a.areaId.toString() === selectedArea)?.nombreGeneral ?? "Sin área"
+                    : "Todas";
+
+                exportarExcelFestivosTrabajados(solicitudes, { area: areaName });
+                toast.success(`Reporte descargado con ${solicitudes.length} registro(s).`);
+            } catch (error) {
+                console.error("Error al descargar Reporte de Festivos Trabajados:", error);
+                toast.dismiss();
+                toast.error(error instanceof Error ? error.message : "No se pudo generar el reporte.");
             }
-
-            const { exportarExcelFestivosTrabajados } = await import("@/utils/festivosTrabajadosExcel");
-            const areaName = selectedArea
-                ? areas.find(a => a.areaId.toString() === selectedArea)?.nombreGeneral ?? "Sin área"
-                : "Todas";
-
-            exportarExcelFestivosTrabajados(solicitudes, { area: areaName });
-            toast.success(`Reporte descargado con ${solicitudes.length} registro(s).`);
-        } catch (error) {
-            console.error("Error al descargar Reporte de Festivos Trabajados:", error);
-            toast.dismiss();
-            toast.error(error instanceof Error ? error.message : "No se pudo generar el reporte.");
         }
-      }
         else if (reportId === 5) {
             if (!selectedArea || selectedGroups.length === 0 || !selectedYear) {
                 toast.error("Por favor selecciona área, grupos y año para generar la constancia de antiguedad");
@@ -842,7 +873,7 @@ export const Reportes = () => {
                 toast.error(error instanceof Error ? error.message : "No se pudo generar el reporte");
             }
         }
-                else {
+        else {
             console.log(`Descargando reporte ${reportId}`);
             toast.info("Funcionalidad en desarrollo para este tipo de reporte");
         }
@@ -971,8 +1002,8 @@ export const Reportes = () => {
                             type="button"
                             onClick={() => { setDateFilterMode('single'); clearDateFilters(); }}
                             className={`px-3 py-1.5 text-sm rounded-full border transition-colors ${dateFilterMode === 'single'
-                                    ? 'bg-continental-black text-white border-continental-black'
-                                    : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'
+                                ? 'bg-continental-black text-white border-continental-black'
+                                : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'
                                 }`}
                         >
                             Día específico
@@ -981,8 +1012,8 @@ export const Reportes = () => {
                             type="button"
                             onClick={() => { setDateFilterMode('range'); clearDateFilters(); }}
                             className={`px-3 py-1.5 text-sm rounded-full border transition-colors ${dateFilterMode === 'range'
-                                    ? 'bg-continental-black text-white border-continental-black'
-                                    : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'
+                                ? 'bg-continental-black text-white border-continental-black'
+                                : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'
                                 }`}
                         >
                             Rango de fechas
