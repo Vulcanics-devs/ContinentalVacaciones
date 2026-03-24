@@ -465,14 +465,16 @@ export const Plantilla = () => {
                     >
                         Ver empleado
                     </Button>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-red-600 border-red-300 hover:bg-red-50"
-                        onClick={() => setDeleteModal({ open: true, row })}
-                    >
-                        Eliminar
-                    </Button>
+                    {hasRole(UserRole.INDUSTRIAL) && (
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-red-600 border-red-300 hover:bg-red-50"
+                            onClick={() => setDeleteModal({ open: true, row })}
+                        >
+                            Eliminar
+                        </Button>
+                    )}
                 </div>
             )
         }

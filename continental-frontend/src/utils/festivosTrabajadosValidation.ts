@@ -143,7 +143,7 @@ export function validarFechaDeUso(
     limiteAbsoluto.setMonth(limiteAbsoluto.getMonth() + 1)
 
     // El límite efectivo es el MENOR de los dos
-    const maxDate = limiteDesdeRequest < limiteAbsoluto ? limiteDesdeRequest : limiteAbsoluto
+    const maxDate = limiteAbsoluto
     const maxDateStr = maxDate.toISOString().split('T')[0]
 
     if (fechaUsoDate > maxDate) {
@@ -167,19 +167,13 @@ export function validarFechaDeUso(
  * @returns Fecha máxima en formato "YYYY-MM-DD"
  */
 export function calcularFechaMaximaUso(
-    fechaTrabajada: string,
-    fechaSolicitud?: Date
+    fechaTrabajada: string
 ): string {
-    const today = fechaSolicitud ?? new Date()
     const fechaTrabajadaDate = parseDateSafe(fechaTrabajada)
-
-    const limiteDesdeRequest = new Date(today)
-    limiteDesdeRequest.setMonth(limiteDesdeRequest.getMonth() + 1)
 
     const limiteAbsoluto = new Date(fechaTrabajadaDate)
     limiteAbsoluto.setFullYear(limiteAbsoluto.getFullYear() + 1)
     limiteAbsoluto.setMonth(limiteAbsoluto.getMonth() + 1)
 
-    const maxDate = limiteDesdeRequest < limiteAbsoluto ? limiteDesdeRequest : limiteAbsoluto
-    return maxDate.toISOString().split('T')[0]
+    return limiteAbsoluto.toISOString().split('T')[0]
 }
