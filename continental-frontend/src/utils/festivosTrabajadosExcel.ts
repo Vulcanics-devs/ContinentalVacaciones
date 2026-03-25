@@ -1,167 +1,49 @@
-﻿/**
- * =============================================================================
- * FESTIVOS TRABAJADOS - VALIDATION RULES
- * =============================================================================
- *
- * Reglas de negocio para solicitudes de festivos trabajados:
- *
- * 1. El empleado tiene 1 A�O desde la fecha del festivo trabajado para SOLICITAR
- *    la compensaci�n.
- * 2. Una vez solicitado, tiene 1 MES desde la fecha de solicitud para USAR el d�a,
- *    pero NO puede exceder el aniversario de 1 a�o + 1 mes desde la fecha trabajada.
- * 3. Si ya expir�, mostrar alerta espec�fica.
- * 4. Si est� cerca del vencimiento, mostrar advertencia con d�as restantes.
- *
- * @author Vulcanics Dev Team
- * =============================================================================
- */
-
-export interface FestivoValidationResult {
-    isValid: boolean
-    isExpired: boolean
-    isCloseToDeadline: boolean
-    daysRemaining: number
-    requestDeadline: Date
-    useDeadline: Date
-    alertMessage?: string
-    warningMessage?: string
-}
-
-export interface FechaUsoValidationResult {
-    isValid: boolean
-    message?: string
-    maxDate: string
-}
+﻿import * as XLSX from 'xlsx';
+import type { SolicitudFestivoTrabajado } from '../services/festivosTrabajadosService';
 
 /**
- * Parsea una fecha en formato "YYYY-MM-DD" de forma segura (sin problemas de zona horaria).
+ * Convierte una fecha ISO (YYYY-MM-DD o con timestamp) al formato DDMMYYYY
+ * respetando ceros al inicio (se almacena como texto para que Excel no los elimine).
  */
-function parseDateSafe(dateStr: string): Date {
-    const partes = dateStr.split('-')
-    return new Date(
-        parseInt(partes[0]),
-        parseInt(partes[1]) - 1,
-        parseInt(partes[2])
-    )
-}
+const formatFechaSAP = (fecha: string | undefined | null): string => {
+    if (!fecha) return '';
+    // Normalizar: tomar solo la parte YYYY-MM-DD
+    const datePart = fecha.includes('T') ? fecha.split('T')[0] : fecha;
+    const [year, month, day] = datePart.split('-');
+    if (!year || !month || !day) return '';
+    return `${day.padStart(2, '0')}${month.padStart(2, '0')}${year}`;
+};
 
-/**
- * Formatea una fecha para mostrar al usuario en espa�ol de M�xico.
- */
-function formatDateES(date: Date): string {
-    return date.toLocaleDateString('es-MX', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-    })
-}
+export const exportarExcelFestivosTrabajados = (
+    solicitudes: SolicitudFestivoTrabajado[],
+    filtros?: { area?: string; fechaDesde?: string; fechaHasta?: string }
+) => {
+    // Formato SAP: Nomina, Festivo Trabajado (DDMMYYYY), Dia Solicitado (DDMMYYYY), Clave (2310)
+    const datos = solicitudes.map((s) => [
+        s.nominaEmpleado,
+        formatFechaSAP(s.festivoOriginal),
+        formatFechaSAP(s.fechaNueva),
+        formatFechaSAP(s.fechaNueva),
+        '2310',
+    ]);
 
-/**
- * Valida si un festivo trabajado a�n puede ser solicitado para compensaci�n.
- *
- * @param fechaTrabajada - Fecha del festivo trabajado (formato "YYYY-MM-DD")
- * @param referenceDate  - Fecha de referencia (por defecto: hoy)
- * @returns Resultado de la validaci�n con mensajes para el usuario
- */
-export function validarFestivoParaSolicitud(
-    fechaTrabajada: string,
-    referenceDate?: Date
-): FestivoValidationResult {
-    const today = referenceDate ?? new Date()
-    const fechaTrabajadaDate = parseDateSafe(fechaTrabajada)
+    const hoja = XLSX.utils.aoa_to_sheet(datos);
 
-    // L�mite para SOLICITAR: 1 a�o desde la fecha trabajada
-    const requestDeadline = new Date(fechaTrabajadaDate)
-    requestDeadline.setFullYear(requestDeadline.getFullYear() + 1)
-
-    // L�mite absoluto para USAR: 1 a�o + 1 mes desde la fecha trabajada
-    const useDeadline = new Date(fechaTrabajadaDate)
-    useDeadline.setFullYear(useDeadline.getFullYear() + 1)
-    useDeadline.setMonth(useDeadline.getMonth() + 1)
-
-    // Calcular d�as restantes para solicitar
-    const diffMs = requestDeadline.getTime() - today.getTime()
-    const daysRemaining = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
-
-    const isExpired = daysRemaining < 0
-    const isCloseToDeadline = !isExpired && daysRemaining <= 30
-
-    const result: FestivoValidationResult = {
-        isValid: !isExpired,
-        isExpired,
-        isCloseToDeadline,
-        daysRemaining: Math.max(daysRemaining, 0),
-        requestDeadline,
-        useDeadline,
-    }
-
-    if (isExpired) {
-        result.alertMessage =
-            `El festivo trabajado del ${formatDateES(fechaTrabajadaDate)} ya expir�. ` +
-            `Ten�as hasta el ${formatDateES(requestDeadline)} para solicitarlo.`
-    }
-
-    if (isCloseToDeadline) {
-        result.warningMessage =
-            `Quedan ${daysRemaining} d�a${daysRemaining !== 1 ? 's' : ''} para solicitar este festivo trabajado. ` +
-            `Fecha l�mite: ${formatDateES(requestDeadline)}.`
-    }
-
-    return result
-}
-
-/**
- * Valida que la fecha de USO seleccionada est� dentro de la ventana permitida.
- *
- * La fecha de uso no puede exceder 1 a�o + 1 mes desde la fecha del festivo trabajado.
- * Este l�mite es absoluto y no depende de cu�ndo se realiza la solicitud.
- *
- * @param fechaTrabajada - Fecha del festivo trabajado (formato "YYYY-MM-DD")
- * @param fechaUso       - Fecha de uso seleccionada (formato "YYYY-MM-DD")
- * @returns Resultado de la validaci�n con fecha m�xima permitida
- */
-export function validarFechaDeUso(
-    fechaTrabajada: string,
-    fechaUso: string
-): FechaUsoValidationResult {
-    const fechaTrabajadaDate = parseDateSafe(fechaTrabajada)
-    const fechaUsoDate = parseDateSafe(fechaUso)
-
-    // L�mite absoluto: 1 a�o + 1 mes desde la fecha trabajada
-    const limiteAbsoluto = new Date(fechaTrabajadaDate)
-    limiteAbsoluto.setFullYear(limiteAbsoluto.getFullYear() + 1)
-    limiteAbsoluto.setMonth(limiteAbsoluto.getMonth() + 1)
-
-    const maxDate = limiteAbsoluto
-    const maxDateStr = maxDate.toISOString().split('T')[0]
-
-    if (fechaUsoDate > maxDate) {
-        return {
-            isValid: false,
-            message:
-                `La fecha seleccionada excede el l�mite permitido. ` +
-                `La fecha m�xima para usar este festivo es el ${formatDateES(maxDate)}.`,
-            maxDate: maxDateStr,
+    // Forzar todas las columnas de fecha como texto para respetar ceros al inicio
+    const range = XLSX.utils.decode_range(hoja['!ref'] || 'A1');
+    for (let R = range.s.r; R <= range.e.r; ++R) {
+        // Columnas B (Festivo Trabajado), C (Dia Solicitado), D (Clave) como texto
+        for (const col of [1, 2, 3]) {
+            const cellRef = XLSX.utils.encode_cell({ r: R, c: col });
+            if (hoja[cellRef]) {
+                hoja[cellRef].t = 's'; // forzar tipo string
+            }
         }
     }
 
-    return { isValid: true, maxDate: maxDateStr }
-}
+    const libro = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(libro, hoja, 'Festivos Trabajados');
 
-/**
- * Calcula la fecha m�xima permitida para usar un festivo (�til para limitar el date picker).
- *
- * @param fechaTrabajada - Fecha del festivo trabajado (formato "YYYY-MM-DD")
- * @returns Fecha m�xima en formato "YYYY-MM-DD"
- */
-export function calcularFechaMaximaUso(
-    fechaTrabajada: string
-): string {
-    const fechaTrabajadaDate = parseDateSafe(fechaTrabajada)
-
-    const limiteAbsoluto = new Date(fechaTrabajadaDate)
-    limiteAbsoluto.setFullYear(limiteAbsoluto.getFullYear() + 1)
-    limiteAbsoluto.setMonth(limiteAbsoluto.getMonth() + 1)
-
-    return limiteAbsoluto.toISOString().split('T')[0]
-}
+    const nombreArchivo = `Festivos_Trabajados_${filtros?.area ?? 'Todas'}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    XLSX.writeFile(libro, nombreArchivo);
+};

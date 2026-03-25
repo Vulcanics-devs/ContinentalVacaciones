@@ -1061,13 +1061,13 @@ namespace tiempo_libre.app.Controllers
 
                 // 8. Eliminar AsignacionesBloque y CambiosBloque
                 var asignacionesBloque = await _dbContext.AsignacionesBloque
-                    .Where(ab => ab.EmpleadoId == id)
+                    .Where(ab => ab.EmpleadoId == id || ab.AsignedoPor == id)
                     .ToListAsync();
                 if (asignacionesBloque.Any())
                     _dbContext.AsignacionesBloque.RemoveRange(asignacionesBloque);
 
                 var cambiosBloque = await _dbContext.CambiosBloque
-                    .Where(cb => cb.EmpleadoId == id)
+                    .Where(cb => cb.EmpleadoId == id || cb.AutorizadoPor == id)
                     .ToListAsync();
                 if (cambiosBloque.Any())
                     _dbContext.CambiosBloque.RemoveRange(cambiosBloque);
