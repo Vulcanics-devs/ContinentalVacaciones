@@ -500,6 +500,58 @@ const WeeklyRoles = () => {
         }))
         .filter((a) => a.id != null);
 
+    // Cálculos de las tablas de balance y programación
+    const weeklyStats = useMemo(() => {
+        if (!weeklyData || employees.length === 0) return null;
+
+        // Obtener el manning actual del grupo seleccionado
+        const currentGroup = groups.find(g => g.grupoId?.toString() === selectedGroup);
+        const manning = currentGroup?.personasPorTurno ?? 0; // ajusta según tu interfaz Grupo
+        const totalEnRol = employees.length;
+
+        return weekDays.map(day => {
+            const dateStr = formatIso(day);
+            let inc = 0, apc = 0, vac = 0, asigJefe = 0, permiso = 0, castigo = 0, fueraTiempo = 0;
+
+            employees.forEach(emp => {
+                const shift = getShiftForDay(emp, day);
+                const s = shift?.toUpperCase();
+                if (s === 'E') inc++;
+                else if (s === 'A' || s === 'R' || s === 'M') apc++;         // APC = accidente/riesgo/maternidad
+                else if (s === 'V') vac++;
+                else if (s === 'P' || s === 'G' || s === 'H' || s === 'O') permiso++;
+                else if (s === 'S') castigo++;
+                else if (s === 'T') fueraTiempo++;
+                // 'A' de jefe de área = vacaciones asignadas jefe — en tu sistema parece mapeado igual que vac
+            });
+
+            const totalNoDispo = inc + apc + vac + asigJefe + permiso + castigo + fueraTiempo;
+            const totalDispo = Math.max(0, totalEnRol - totalNoDispo);
+            const diferencia = totalDispo - manning;
+
+            // Cálculo 6%
+            const horasDispo = totalDispo * 8;
+            const horasExtra = Math.max(0, -diferencia) * 8;
+            const pctExtra = totalDispo > 0 ? horasExtra / horasDispo : 0;
+
+            // Programación de vacaciones
+            const vacProgramadas = vac; // vacaciones del día
+            const personalTiempoNormal = totalEnRol - vacProgramadas;
+            const horasTiempoNormal = personalTiempoNormal * 8;
+            const horasExtraVAP = Math.max(0, (manning - (totalEnRol - vacProgramadas))) * 8;
+            const pctExtraVAP = personalTiempoNormal > 0 ? horasExtraVAP / horasTiempoNormal : 0;
+
+            return {
+                dateStr,
+                inc, apc, vac, asigJefe, permiso, castigo, fueraTiempo,
+                totalNoDispo, totalEnRol, totalDispo, manning, diferencia,
+                horasDispo, horasExtra, pctExtra,
+                vacProgramadas, personalTiempoNormal,
+                horasTiempoNormal, horasExtraVAP, pctExtraVAP,
+            };
+        });
+    }, [weeklyData, employees, weekDays, groups, selectedGroup]);
+
     return (
         <div className="flex flex-col min-h-screen w-full bg-white p-6 md:p-10 max-w-[2000px] mx-auto">
             <header className="flex flex-wrap items-center justify-between gap-3 mb-6">
@@ -514,6 +566,34 @@ const WeeklyRoles = () => {
                         <p className="text-sm text-slate-600">
                             Turnos y descansos de lunes a domingo. Nomenclatura: D=Descanso, 1=Mañana, 2=Tarde, 3=Noche, V=Vacaciones.
                         </p>
+                    </div>
+                    {/* LEYENDA - arriba, en línea horizontal */}
+                    <div className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                            <span className="font-semibold text-gray-700 mr-1">Leyenda:</span>
+                            {[
+                                { code: "D", label: "Descanso", color: "bg-gray-100 text-gray-700" },
+                                { code: "1", label: "Mañana", color: "bg-emerald-100 text-emerald-700" },
+                                { code: "2", label: "Tarde", color: "bg-yellow-100 text-yellow-700" },
+                                { code: "3", label: "Noche", color: "bg-blue-100 text-blue-700" },
+                                { code: "V", label: "Vacaciones", color: "bg-purple-100 text-purple-700" },
+                                { code: "P", label: "Perm. c/Goce", color: "bg-green-100 text-green-700" },
+                                { code: "E", label: "Inc. Enfermedad", color: "bg-red-100 text-red-700" },
+                                { code: "A", label: "Inc. Accidente", color: "bg-orange-100 text-orange-700" },
+                                { code: "M", label: "Inc. Maternidad", color: "bg-pink-100 text-pink-700" },
+                                { code: "G", label: "Perm. s/Goce", color: "bg-amber-100 text-amber-700" },
+                                { code: "R", label: "Inc. Riesgo", color: "bg-rose-100 text-rose-700" },
+                                { code: "S", label: "Suspensión", color: "bg-slate-100 text-slate-700" },
+                                { code: "O", label: "Perm. Paternidad", color: "bg-cyan-100 text-cyan-700" },
+                                { code: "H", label: "Perm. s/Goce Alt", color: "bg-indigo-100 text-indigo-700" },
+                                { code: "F", label: "Festivo Trabajado", color: "bg-teal-100 text-teal-700" },
+                            ].map(({ code, label, color }) => (
+                                <span key={code} className="flex items-center gap-1">
+                                    <span className={`inline-flex items-center justify-center rounded-full px-2 py-0.5 font-semibold ${color}`}>{code}</span>
+                                    <span className="text-gray-500">{label}</span>
+                                </span>
+                            ))}
+                        </div>
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -691,71 +771,116 @@ const WeeklyRoles = () => {
                 </table>
             </div>
 
-            <div className="mt-6 p-4 bg-gray-50 border border-gray-200 rounded-lg">
-                <h3 className="text-sm font-semibold text-gray-700 mb-3">Leyenda de códigos:</h3>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 text-xs">
-                    <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center justify-center rounded-full px-3 py-1 bg-gray-100 text-gray-700 font-semibold">D</span>
-                        <span className="text-gray-600">Descanso</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center justify-center rounded-full px-3 py-1 bg-emerald-100 text-emerald-700 font-semibold">1</span>
-                        <span className="text-gray-600">Turno Mañana</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center justify-center rounded-full px-3 py-1 bg-yellow-100 text-yellow-700 font-semibold">2</span>
-                        <span className="text-gray-600">Turno Tarde</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center justify-center rounded-full px-3 py-1 bg-blue-100 text-blue-700 font-semibold">3</span>
-                        <span className="text-gray-600">Turno Noche</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center justify-center rounded-full px-3 py-1 bg-purple-100 text-purple-700 font-semibold">V</span>
-                        <span className="text-gray-600">Vacaciones</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center justify-center rounded-full px-3 py-1 bg-green-100 text-green-700 font-semibold">P</span>
-                        <span className="text-gray-600">Permiso con Goce</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center justify-center rounded-full px-3 py-1 bg-red-100 text-red-700 font-semibold">E</span>
-                        <span className="text-gray-600">Inc. Enfermedad</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center justify-center rounded-full px-3 py-1 bg-orange-100 text-orange-700 font-semibold">A</span>
-                        <span className="text-gray-600">Inc. Accidente Trabajo</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center justify-center rounded-full px-3 py-1 bg-pink-100 text-pink-700 font-semibold">M</span>
-                        <span className="text-gray-600">Inc. Maternidad</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center justify-center rounded-full px-3 py-1 bg-amber-100 text-amber-700 font-semibold">G</span>
-                        <span className="text-gray-600">Permiso sin Goce</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center justify-center rounded-full px-3 py-1 bg-rose-100 text-rose-700 font-semibold">R</span>
-                        <span className="text-gray-600">Inc. Riesgo Trabajo</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center justify-center rounded-full px-3 py-1 bg-slate-100 text-slate-700 font-semibold">S</span>
-                        <span className="text-gray-600">Suspensión</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center justify-center rounded-full px-3 py-1 bg-cyan-100 text-cyan-700 font-semibold">O</span>
-                        <span className="text-gray-600">Permiso Paternidad</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center justify-center rounded-full px-3 py-1 bg-indigo-100 text-indigo-700 font-semibold">H</span>
-                        <span className="text-gray-600">Perm. sin Goce (Alt)</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center justify-center rounded-full px-3 py-1 bg-teal-100 text-teal-700 font-semibold">F</span>
-                        <span className="text-gray-600">Festivo Trabajado</span>
-                    </div>
+            {/* TABLA: Balance personal (Inc APC VAP CT) */}
+            {weeklyStats && (
+                <div className="mt-4 overflow-auto border border-gray-200 rounded-lg shadow-sm">
+                    <table className="min-w-full text-xs">
+                        <thead className="bg-slate-100">
+                            <tr>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-700 w-48">Balance personal</th>
+                                {weekDays.map((day, idx) => (
+                                    <th key={idx} className="px-3 py-2 text-center font-semibold text-gray-600">
+                                        <div>{dayLabels[idx]}</div>
+                                        <div className="text-[10px] text-gray-500">{format(day, "dd/MM")}</div>
+                                    </th>
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {[
+                                { label: "Inc – Incapacidad", key: "inc" as const, cls: "text-red-700 bg-red-50" },
+                                { label: "APC – Acc/Riesgo/Mat", key: "apc" as const, cls: "text-orange-700 bg-orange-50" },
+                                { label: "V – Vacaciones", key: "vac" as const, cls: "text-purple-700 bg-purple-50" },
+                                { label: "P – Permisos", key: "permiso" as const, cls: "text-green-700 bg-green-50" },
+                                { label: "C – Castigo/Suspensión", key: "castigo" as const, cls: "text-slate-700 bg-slate-50" },
+                                { label: "T – Fuera de tiempo", key: "fueraTiempo" as const, cls: "text-gray-700 bg-gray-50" },
+                                { label: "Total no disponible", key: "totalNoDispo" as const, cls: "font-semibold text-gray-800" },
+                                { label: "Total en rol", key: "totalEnRol" as const, cls: "font-semibold text-gray-800" },
+                                { label: "Total disponible", key: "totalDispo" as const, cls: "font-semibold text-blue-700" },
+                                { label: "Manning requerido", key: "manning" as const, cls: "font-semibold text-gray-700" },
+                                { label: "Diferencia", key: "diferencia" as const, cls: "font-semibold" },
+                            ].map(({ label, key, cls }) => (
+                                <tr key={key} className="border-t border-gray-100">
+                                    <td className={`px-3 py-1.5 ${cls}`}>{label}</td>
+                                    {weeklyStats.map((stat, idx) => {
+                                        const val = stat[key];
+                                        const isNeg = key === "diferencia" && typeof val === "number" && val < 0;
+                                        return (
+                                            <td key={idx} className={`px-3 py-1.5 text-center ${cls} ${isNeg ? "text-red-600 font-bold" : ""}`}>
+                                                {typeof val === "number" ? val : "—"}
+                                            </td>
+                                        );
+                                    })}
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
                 </div>
-            </div>
+            )}
+
+            {/* TABLA: Apartado Programación de Vacaciones + Cálculo 6% */}
+            {weeklyStats && (
+                <div className="mt-4 overflow-auto border border-gray-200 rounded-lg shadow-sm">
+                    <table className="min-w-full text-xs">
+                        <thead className="bg-blue-50">
+                            <tr>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-700 w-48">Programación Vacaciones / 6% T.E.</th>
+                                {weekDays.map((day, idx) => (
+                                    <th key={idx} className="px-3 py-2 text-center font-semibold text-gray-600">
+                                        <div>{dayLabels[idx]}</div>
+                                        <div className="text-[10px] text-gray-500">{format(day, "dd/MM")}</div>
+                                    </th>
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {/* Apartado Programación */}
+                            <tr className="border-t border-blue-200 bg-blue-50">
+                                <td colSpan={8} className="px-3 py-1 font-semibold text-blue-800 text-[11px] uppercase tracking-wide">
+                                    Apartado Programación de Vacaciones
+                                </td>
+                            </tr>
+                            {[
+                                { label: "Personal requerido (manning)", key: "manning" as const, fmt: (v: number) => v.toString() },
+                                { label: "Vacaciones programadas", key: "vacProgramadas" as const, fmt: (v: number) => v.toString() },
+                                { label: "Personal tiempo normal", key: "personalTiempoNormal" as const, fmt: (v: number) => v.toString() },
+                                { label: "Horas tiempo normal", key: "horasTiempoNormal" as const, fmt: (v: number) => v.toString() },
+                                { label: "Horas tiempo extra", key: "horasExtraVAP" as const, fmt: (v: number) => v === 0 ? "—" : v.toString() },
+                                { label: "% de tiempo extra", key: "pctExtraVAP" as const, fmt: (v: number) => v === 0 ? "—" : (v * 100).toFixed(1) + "%" },
+                            ].map(({ label, key, fmt }) => (
+                                <tr key={key} className="border-t border-gray-100">
+                                    <td className="px-3 py-1.5 text-gray-700">{label}</td>
+                                    {weeklyStats.map((stat, idx) => (
+                                        <td key={idx} className="px-3 py-1.5 text-center text-gray-700">
+                                            {fmt(stat[key] as number)}
+                                        </td>
+                                    ))}
+                                </tr>
+                            ))}
+                            {/* Cálculo 6% */}
+                            <tr className="border-t border-yellow-200 bg-yellow-50">
+                                <td colSpan={8} className="px-3 py-1 font-semibold text-yellow-800 text-[11px] uppercase tracking-wide">
+                                    Cálculo al 6% de tiempo extra (manning disponible)
+                                </td>
+                            </tr>
+                            {[
+                                { label: "Horas personal disponible", key: "horasDispo" as const, fmt: (v: number) => v.toString() },
+                                { label: "Horas de tiempo extra", key: "horasExtra" as const, fmt: (v: number) => v === 0 ? "—" : v.toString() },
+                                { label: "% de tiempo extra", key: "pctExtra" as const, fmt: (v: number) => v === 0 ? "—" : (v * 100).toFixed(1) + "%" },
+                            ].map(({ label, key, fmt }) => (
+                                <tr key={key} className="border-t border-gray-100">
+                                    <td className="px-3 py-1.5 text-gray-700">{label}</td>
+                                    {weeklyStats.map((stat, idx) => (
+                                        <td key={idx} className="px-3 py-1.5 text-center text-gray-700">
+                                            {fmt(stat[key] as number)}
+                                        </td>
+                                    ))}
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
         </div>
     );
 };
