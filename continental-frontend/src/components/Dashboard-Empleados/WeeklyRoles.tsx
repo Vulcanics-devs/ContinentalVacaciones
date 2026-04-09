@@ -13,7 +13,9 @@ import { Badge } from "../ui/badge";
 import { toast } from "sonner";
 import { exportWeeklyRolesExcel } from "@/utils/weeklyRolesExcel";
 import { UserRole } from "@/interfaces/User.interface";
-import { httpClient } from '@/services/httpClient'; // ✅ AGREGAR ESTE IMPORT
+import { httpClient } from '@/services/httpClient'; 
+import { vacacionesService } from "@/services/vacacionesService";
+
 const dayLabels = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"];
 const getWeekStart = (date: Date): Date => startOfWeek(date, { weekStartsOn: 1 });
 const buildWeekDays = (weekStart: Date): Date[] =>
@@ -43,6 +45,7 @@ const WeeklyRoles = () => {
     const [loadingEmployees, setLoadingEmployees] = useState(false);
     const [exporting, setExporting] = useState(false);
     const [exportingAll, setExportingAll] = useState(false);
+    const [customWeekStart, setCustomWeekStart] = useState<string>("");
 
     const canAccess =
         hasRole(UserRole.SUPER_ADMIN) ||
@@ -143,6 +146,22 @@ const WeeklyRoles = () => {
         // hasRole se mantiene fuera para evitar re-renderes por referencia de función
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [user?.area?.areaId, user?.grupo?.grupoId]);
+
+    const [porcentajeAusenciaMaximo, setPorcentajeAusenciaMaximo] = useState(4.5);
+
+    useEffect(() => {
+        vacacionesService.getConfig().then(config => {
+            setPorcentajeAusenciaMaximo(config.porcentajeAusenciaMaximo);
+        });
+    }, []);
+
+    const [areaManningBase, setAreaManningBase] = useState<number>(0);
+
+    useEffect(() => {
+        if (!selectedArea || selectedArea === "all") return;
+        const area = areas.find(a => a.areaId === selectedArea);
+        if (area) setAreaManningBase((area as any).manning ?? 0);
+    }, [selectedArea, areas]);
 
     // Ajustar grupo al cambiar el área seleccionada
     useEffect(() => {
@@ -504,53 +523,56 @@ const WeeklyRoles = () => {
     const weeklyStats = useMemo(() => {
         if (!weeklyData || employees.length === 0) return null;
 
-        // Obtener el manning actual del grupo seleccionado
         const currentGroup = groups.find(g => g.grupoId?.toString() === selectedGroup);
-        const manning = currentGroup?.personasPorTurno ?? 0; // ajusta según tu interfaz Grupo
+        // Manning dinámico: viene del área seleccionada a través del grupo
+        const manning = areaManningBase > 0 ? areaManningBase : (currentGroup?.personasPorTurno ?? 0);
         const totalEnRol = employees.length;
 
         return weekDays.map(day => {
             const dateStr = formatIso(day);
-            let inc = 0, apc = 0, vac = 0, asigJefe = 0, permiso = 0, castigo = 0, fueraTiempo = 0;
+            let inc = 0, apc = 0, vac = 0, permiso = 0, castigo = 0, fueraTiempo = 0;
 
             employees.forEach(emp => {
                 const shift = getShiftForDay(emp, day);
                 const s = shift?.toUpperCase();
                 if (s === 'E') inc++;
-                else if (s === 'A' || s === 'R' || s === 'M') apc++;         // APC = accidente/riesgo/maternidad
+                else if (s === 'A' || s === 'R' || s === 'M') apc++;
                 else if (s === 'V') vac++;
                 else if (s === 'P' || s === 'G' || s === 'H' || s === 'O') permiso++;
                 else if (s === 'S') castigo++;
                 else if (s === 'T') fueraTiempo++;
-                // 'A' de jefe de área = vacaciones asignadas jefe — en tu sistema parece mapeado igual que vac
             });
 
-            const totalNoDispo = inc + apc + vac + asigJefe + permiso + castigo + fueraTiempo;
+            const totalNoDispo = inc + apc + vac + permiso + castigo + fueraTiempo;
             const totalDispo = Math.max(0, totalEnRol - totalNoDispo);
-            const diferencia = totalDispo - manning;
+            const diferencia = totalDispo - manning; // negativo = déficit
 
-            // Cálculo 6%
+            // Cálculo 6% (basado en manning vs disponibles)
             const horasDispo = totalDispo * 8;
-            const horasExtra = Math.max(0, -diferencia) * 8;
-            const pctExtra = totalDispo > 0 ? horasExtra / horasDispo : 0;
+            // Horas extra = déficit * 8 (solo cuando hay déficit, es decir diferencia < 0)
+            const horasExtra6 = diferencia < 0 ? Math.abs(diferencia) * 8 : 0;
+            const pctExtra6 = horasDispo > 0 ? horasExtra6 / horasDispo : 0;
 
             // Programación de vacaciones
-            const vacProgramadas = vac; // vacaciones del día
-            const personalTiempoNormal = totalEnRol - vacProgramadas;
+            const vacProgramadas = vac;
+            const personalTiempoNormal = totalDispo;
             const horasTiempoNormal = personalTiempoNormal * 8;
-            const horasExtraVAP = Math.max(0, (manning - (totalEnRol - vacProgramadas))) * 8;
-            const pctExtraVAP = personalTiempoNormal > 0 ? horasExtraVAP / horasTiempoNormal : 0;
+            // Horas extra VAP = déficit de manning considerando solo vacaciones
+            const diferenciaVAP = personalTiempoNormal - manning;
+            const horasExtraVAP = diferenciaVAP < 0 ? Math.abs(diferenciaVAP) * 8 : 0;
+            // % tiempo extra = horas extra / horas tiempo normal
+            const pctExtraVAP = horasTiempoNormal > 0 ? horasExtraVAP / horasTiempoNormal : 0;
 
             return {
                 dateStr,
-                inc, apc, vac, asigJefe, permiso, castigo, fueraTiempo,
+                inc, apc, vac, permiso, castigo, fueraTiempo,
                 totalNoDispo, totalEnRol, totalDispo, manning, diferencia,
-                horasDispo, horasExtra, pctExtra,
+                horasDispo, horasExtra6, pctExtra6,
                 vacProgramadas, personalTiempoNormal,
                 horasTiempoNormal, horasExtraVAP, pctExtraVAP,
             };
         });
-    }, [weeklyData, employees, weekDays, groups, selectedGroup]);
+    }, [weeklyData, employees, weekDays, groups, selectedGroup, areaManningBase]);
 
     return (
         <div className="flex flex-col min-h-screen w-full bg-white p-6 md:p-10 max-w-[2000px] mx-auto">
@@ -563,9 +585,6 @@ const WeeklyRoles = () => {
                     <div>
                         <p className="text-xs uppercase text-slate-500">Roles semanales</p>
                         <h1 className="text-2xl font-bold text-slate-800">Consulta de turnos por grupo</h1>
-                        <p className="text-sm text-slate-600">
-                            Turnos y descansos de lunes a domingo. Nomenclatura: D=Descanso, 1=Mañana, 2=Tarde, 3=Noche, V=Vacaciones.
-                        </p>
                     </div>
                     {/* LEYENDA - arriba, en línea horizontal */}
                     <div className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
@@ -616,10 +635,39 @@ const WeeklyRoles = () => {
                         Semana siguiente
                         <ChevronRight className="w-4 h-4" />
                     </Button>
+                    <Button
+                        variant="outline"
+                        onClick={() => {
+                            setWeekStart(getWeekStart(new Date()));
+                            setCustomWeekStart("");
+                        }}
+                        className="flex items-center gap-1 text-xs"
+                    >
+                        Borrar
+                    </Button>
                 </div>
                 <div className="flex items-center gap-2">
-                    <CalendarIcon className="w-4 h-4 text-slate-500" />
-                    <span className="text-sm text-slate-700">{weekLabel}</span>
+                    <label className="text-sm text-slate-600">Ir a semana:</label>
+                    <input
+                        type="date"
+                        className="border border-gray-300 rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        value={customWeekStart}
+                        onChange={(e) => {
+                            const val = e.target.value;
+                            setCustomWeekStart(val);
+                            if (!val || val.length !== 10) return;
+                            const picked = new Date(val + "T12:00:00");
+                            if (
+                                !isNaN(picked.getTime()) &&
+                                picked.getFullYear() >= 1900 &&
+                                picked.getFullYear() <= 2100
+                            ) {
+                                setWeekStart(picked);
+                                // NO llamar setCustomWeekStart aquí
+                            }
+                        }}
+                    />
+                    <span className="text-xs text-slate-500">{weekLabel}</span>
                 </div>
                 <div className="ml-auto flex items-center gap-2">
                     <label className="text-sm text-slate-600">Area</label>
@@ -656,13 +704,7 @@ const WeeklyRoles = () => {
                         disabled={exporting || loadingWeek || loadingGroups}
                         className="flex items-center gap-2"
                     >
-                        {exporting ? (
-                            "Exportando..."
-                        ) : (
-                            <>
-                                <Download className="w-4 h-4" /> Excel por semana
-                            </>
-                        )}
+                        {exporting ? "Exportando..." : <><Download className="w-4 h-4" /> Excel por semana</>}
                     </Button>
                     <Button
                         variant="continentalOutline"
@@ -670,13 +712,7 @@ const WeeklyRoles = () => {
                         disabled={exportingAll || loadingGroups}
                         className="flex items-center gap-2"
                     >
-                        {exportingAll ? (
-                            "Exportando año..."
-                        ) : (
-                            <>
-                                <Download className="w-4 h-4" /> Excel año completo
-                            </>
-                        )}
+                        {exportingAll ? "Exportando año..." : <><Download className="w-4 h-4" /> Excel año completo</>}
                     </Button>
                 </div>
             </div>
@@ -824,7 +860,9 @@ const WeeklyRoles = () => {
                     <table className="min-w-full text-xs">
                         <thead className="bg-blue-50">
                             <tr>
-                                <th className="px-3 py-2 text-left font-semibold text-gray-700 w-48">Programación Vacaciones / 6% T.E.</th>
+                                <th className="px-3 py-2 text-left font-semibold text-gray-700 w-48">
+                                    Resumen requerimiento tiempo extra / {porcentajeAusenciaMaximo}%
+                                </th>
                                 {weekDays.map((day, idx) => (
                                     <th key={idx} className="px-3 py-2 text-center font-semibold text-gray-600">
                                         <div>{dayLabels[idx]}</div>
@@ -841,42 +879,55 @@ const WeeklyRoles = () => {
                                 </td>
                             </tr>
                             {[
-                                { label: "Personal requerido (manning)", key: "manning" as const, fmt: (v: number) => v.toString() },
-                                { label: "Vacaciones programadas", key: "vacProgramadas" as const, fmt: (v: number) => v.toString() },
-                                { label: "Personal tiempo normal", key: "personalTiempoNormal" as const, fmt: (v: number) => v.toString() },
-                                { label: "Horas tiempo normal", key: "horasTiempoNormal" as const, fmt: (v: number) => v.toString() },
-                                { label: "Horas tiempo extra", key: "horasExtraVAP" as const, fmt: (v: number) => v === 0 ? "—" : v.toString() },
-                                { label: "% de tiempo extra", key: "pctExtraVAP" as const, fmt: (v: number) => v === 0 ? "—" : (v * 100).toFixed(1) + "%" },
-                            ].map(({ label, key, fmt }) => (
-                                <tr key={key} className="border-t border-gray-100">
+                                {
+                                    label: "Personal requerido (manning)",
+                                    render: (stat: typeof weeklyStats[0]) => (
+                                        <span>{stat.manning}</span>
+                                    )
+                                },
+                                {
+                                    label: "Vacaciones programadas",
+                                    render: (stat: typeof weeklyStats[0]) => (
+                                        <span>{stat.vacProgramadas}</span>
+                                    )
+                                },
+                                {
+                                    label: "Personal tiempo normal",
+                                    render: (stat: typeof weeklyStats[0]) => (
+                                        <span>{stat.personalTiempoNormal}</span>
+                                    )
+                                },
+                                {
+                                    label: "Horas tiempo normal",
+                                    render: (stat: typeof weeklyStats[0]) => (
+                                        <span>{stat.horasTiempoNormal}</span>
+                                    )
+                                },
+                                {
+                                    label: "Horas tiempo extra",
+                                    render: (stat: typeof weeklyStats[0]) => (
+                                        <span>{stat.horasExtraVAP === 0 ? "—" : (stat.horasExtraVAP).toString()}</span>
+                                    )
+                                },
+                                {
+                                    label: `% de tiempo extra (${porcentajeAusenciaMaximo}%)`,
+                                    render: (stat: typeof weeklyStats[0]) => {
+                                        const pct = stat.pctExtraVAP * 100;
+                                        const color = pct > porcentajeAusenciaMaximo ? "text-red-600 font-semibold" : "text-green-600 font-semibold";
+                                        return <span className={color}>{pct === 0 ? "—" : pct.toFixed(1) + "%"}</span>;
+                                    }
+                                },
+                            ].map(({ label, render }, rowIdx) => (
+                                <tr key={rowIdx} className="border-t border-gray-100">
                                     <td className="px-3 py-1.5 text-gray-700">{label}</td>
                                     {weeklyStats.map((stat, idx) => (
                                         <td key={idx} className="px-3 py-1.5 text-center text-gray-700">
-                                            {fmt(stat[key] as number)}
+                                            {render(stat)}
                                         </td>
                                     ))}
                                 </tr>
                             ))}
-                            {/* Cálculo 6% */}
-                            <tr className="border-t border-yellow-200 bg-yellow-50">
-                                <td colSpan={8} className="px-3 py-1 font-semibold text-yellow-800 text-[11px] uppercase tracking-wide">
-                                    Cálculo al 6% de tiempo extra (manning disponible)
-                                </td>
-                            </tr>
-                            {[
-                                { label: "Horas personal disponible", key: "horasDispo" as const, fmt: (v: number) => v.toString() },
-                                { label: "Horas de tiempo extra", key: "horasExtra" as const, fmt: (v: number) => v === 0 ? "—" : v.toString() },
-                                { label: "% de tiempo extra", key: "pctExtra" as const, fmt: (v: number) => v === 0 ? "—" : (v * 100).toFixed(1) + "%" },
-                            ].map(({ label, key, fmt }) => (
-                                <tr key={key} className="border-t border-gray-100">
-                                    <td className="px-3 py-1.5 text-gray-700">{label}</td>
-                                    {weeklyStats.map((stat, idx) => (
-                                        <td key={idx} className="px-3 py-1.5 text-center text-gray-700">
-                                            {fmt(stat[key] as number)}
-                                        </td>
-                                    ))}
-                                </tr>
-                            ))}
+                           
                         </tbody>
                     </table>
                 </div>

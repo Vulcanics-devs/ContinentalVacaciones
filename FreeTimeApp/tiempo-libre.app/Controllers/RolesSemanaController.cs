@@ -45,8 +45,7 @@ namespace tiempo_libre.Controllers
             {
                 // Alinear al lunes de esa semana
                 var culture = CultureInfo.CurrentCulture;
-                var diff = (7 + (fechaInicio.DayOfWeek - DayOfWeek.Monday)) % 7;
-                var inicio = fechaInicio.AddDays(-diff).Date;
+                var inicio = fechaInicio.Date;
                 var fin = inicio.AddDays(6).Date;
 
                 var grupo = await _db.Grupos.FirstOrDefaultAsync(g => g.GrupoId == grupoId);

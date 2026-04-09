@@ -54,7 +54,8 @@ class SolicitudesService {
             console.log('Fetching solicitud by ID:', id)
 
             const response = await httpClient.get<ApiResponse<Solicitud>>(
-                `${this.baseUrl}/solicitud/${id}`
+                `${this.baseUrl}/solicitud/${id}`,
+                { timeout: 60000 }
             )
 
             console.log('Solicitud detail API response:', response)
