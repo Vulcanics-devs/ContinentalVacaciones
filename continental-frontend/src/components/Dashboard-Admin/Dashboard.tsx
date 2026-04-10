@@ -202,16 +202,22 @@ export const Dashboard: React.FC = () => {
         const rows = semanaSel !== 'all'
             ? semanalData.filter(r => r.semana === Number(semanaSel))
             : semanalData;
-        return rows.map(r => ({
-            name: `Sem ${r.semana}`,
-            Vacación: r.vacacion,
-            Reprogramación: r.reprogramacion,
-            'Festivo Trab.': r.festivoTrabajado,
-            Permiso: r.permiso,
-            Incapacidad: r.incapacidad,
-            _total: r.vacacion + r.reprogramacion + r.festivoTrabajado + r.permiso + r.incapacidad,
-        }));
-    }, [semanalData, semanaSel]);
+        return rows.map(r => {
+            const primerDia = (r.semana - 1) * 7 + 1;
+            const fecha = new Date(anioSel, mesSel - 1, Math.min(primerDia, 28));
+            const startOfYear = new Date(fecha.getFullYear(), 0, 1);
+            const weekNum = Math.ceil(((fecha.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
+            return ({
+                name: `Sem ${weekNum}`,
+                Vacación: r.vacacion,
+                Reprogramación: r.reprogramacion,
+                'Festivo Trab.': r.festivoTrabajado,
+                Permiso: r.permiso,
+                Incapacidad: r.incapacidad,
+                _total: r.vacacion + r.reprogramacion + r.festivoTrabajado + r.permiso + r.incapacidad,
+            });
+        });
+    }, [semanalData, semanaSel, anioSel, mesSel]);
 
     // FIX: agregar campo percent para el pie tooltip
     const motivosPie = useMemo(() => {

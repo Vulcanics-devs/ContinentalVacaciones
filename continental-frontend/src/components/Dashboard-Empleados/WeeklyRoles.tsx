@@ -554,14 +554,19 @@ const WeeklyRoles = () => {
             const pctExtra6 = horasDispo > 0 ? horasExtra6 / horasDispo : 0;
 
             // Programación de vacaciones
-            const vacProgramadas = vac;
-            const personalTiempoNormal = totalDispo;
+            const vacProgramadas = totalNoDispo;
+            // Personal tiempo normal = los que SÍ trabajan (ni descanso ni ausentes)
+            const descanso = employees.filter(emp => {
+                const s = getShiftForDay(emp, day)?.toUpperCase();
+                return s === 'D' || s === '';
+            }).length;
+            const personalTiempoNormal = Math.max(0, totalEnRol - totalNoDispo - descanso);
             const horasTiempoNormal = personalTiempoNormal * 8;
-            // Horas extra VAP = déficit de manning considerando solo vacaciones
             const diferenciaVAP = personalTiempoNormal - manning;
             const horasExtraVAP = diferenciaVAP < 0 ? Math.abs(diferenciaVAP) * 8 : 0;
-            // % tiempo extra = horas extra / horas tiempo normal
-            const pctExtraVAP = horasTiempoNormal > 0 ? horasExtraVAP / horasTiempoNormal : 0;
+            // Si no hay horas normales pero sí hay déficit, usar manning como base
+            const baseCalculo = horasTiempoNormal > 0 ? horasTiempoNormal : (manning * 8);
+            const pctExtraVAP = baseCalculo > 0 && horasExtraVAP > 0 ? horasExtraVAP / baseCalculo : 0;
 
             return {
                 dateStr,
@@ -570,6 +575,7 @@ const WeeklyRoles = () => {
                 horasDispo, horasExtra6, pctExtra6,
                 vacProgramadas, personalTiempoNormal,
                 horasTiempoNormal, horasExtraVAP, pctExtraVAP,
+                esDiaDescanso: descanso === employees.length,
             };
         });
     }, [weeklyData, employees, weekDays, groups, selectedGroup, areaManningBase]);
@@ -726,7 +732,7 @@ const WeeklyRoles = () => {
                             </th>
                             {weekDays.map((day, idx) => (
                                 <th key={idx} className="px-3 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                                    <div>{dayLabels[idx]}</div>
+                                    <div className="capitalize">{format(day, "EEE", { locale: es })}</div>
                                     <div className="text-[11px] text-gray-500">{format(day, "dd/MM")}</div>
                                 </th>
                             ))}
@@ -838,7 +844,9 @@ const WeeklyRoles = () => {
                             ].map(({ label, key, cls }) => (
                                 <tr key={key} className="border-t border-gray-100">
                                     <td className={`px-3 py-1.5 ${cls}`}>{label}</td>
-                                    {weeklyStats.map((stat, idx) => {
+                                    {weekDays.map((day, idx) => {
+                                        const stat = weeklyStats.find(s => s.dateStr === formatIso(day));
+                                        if (!stat) return <td key={idx} className="px-3 py-1.5 text-center">—</td>;
                                         const val = stat[key];
                                         const isNeg = key === "diferencia" && typeof val === "number" && val < 0;
                                         return (
@@ -886,7 +894,7 @@ const WeeklyRoles = () => {
                                     )
                                 },
                                 {
-                                    label: "Vacaciones programadas",
+                                    label: "Personal no disponible",
                                     render: (stat: typeof weeklyStats[0]) => (
                                         <span>{stat.vacProgramadas}</span>
                                     )
@@ -900,13 +908,13 @@ const WeeklyRoles = () => {
                                 {
                                     label: "Horas tiempo normal",
                                     render: (stat: typeof weeklyStats[0]) => (
-                                        <span>{stat.horasTiempoNormal}</span>
+                                        <span>{stat.esDiaDescanso || stat.horasTiempoNormal === 0 ? "—" : stat.horasTiempoNormal}</span>
                                     )
                                 },
                                 {
                                     label: "Horas tiempo extra",
                                     render: (stat: typeof weeklyStats[0]) => (
-                                        <span>{stat.horasExtraVAP === 0 ? "—" : (stat.horasExtraVAP).toString()}</span>
+                                        <span>{stat.esDiaDescanso || stat.horasExtraVAP === 0 ? "—" : stat.horasExtraVAP.toString()}</span>
                                     )
                                 },
                                 {
@@ -914,17 +922,20 @@ const WeeklyRoles = () => {
                                     render: (stat: typeof weeklyStats[0]) => {
                                         const pct = stat.pctExtraVAP * 100;
                                         const color = pct > porcentajeAusenciaMaximo ? "text-red-600 font-semibold" : "text-green-600 font-semibold";
-                                        return <span className={color}>{pct === 0 ? "—" : pct.toFixed(1) + "%"}</span>;
+                                        return <span className={color}>{stat.esDiaDescanso || stat.horasTiempoNormal === 0 ? "—" : pct.toFixed(1) + "%"}</span>;
                                     }
                                 },
                             ].map(({ label, render }, rowIdx) => (
                                 <tr key={rowIdx} className="border-t border-gray-100">
                                     <td className="px-3 py-1.5 text-gray-700">{label}</td>
-                                    {weeklyStats.map((stat, idx) => (
-                                        <td key={idx} className="px-3 py-1.5 text-center text-gray-700">
-                                            {render(stat)}
-                                        </td>
-                                    ))}
+                                    {weekDays.map((day, idx) => {
+                                        const stat = weeklyStats.find(s => s.dateStr === formatIso(day));
+                                        return (
+                                            <td key={idx} className="px-3 py-1.5 text-center text-gray-700">
+                                                {stat ? render(stat) : "—"}
+                                            </td>
+                                        );
+                                    })}
                                 </tr>
                             ))}
                            
