@@ -121,5 +121,140 @@ namespace tiempo_libre.Controllers
 
             return Ok(new ApiResponse<object>(true, resultado));
         }
+
+        /// <summary>
+        /// Retorna resumen de horas normales vs tiempo extra por semana del mes
+        /// basado en déficit de manning respecto al personal disponible
+        /// </summary>
+        [HttpGet("resumen-tiempo-extra")]
+        public async Task<IActionResult> GetResumenTiempoExtra(
+            [FromQuery] int anio = 0,
+            [FromQuery] int mes = 0,
+            [FromQuery] int? areaId = null)
+        {
+            if (anio == 0) anio = DateTime.Today.Year;
+            if (mes == 0) mes = DateTime.Today.Month;
+
+            var inicio = new DateOnly(anio, mes, 1);
+            var fin = new DateOnly(anio, mes, DateTime.DaysInMonth(anio, mes));
+
+            // Obtener grupos del área filtrada (o todos)
+            var gruposQuery = _db.Grupos.Include(g => g.Area).AsQueryable();
+            if (areaId.HasValue)
+                gruposQuery = gruposQuery.Where(g => g.AreaId == areaId.Value);
+            var grupos = await gruposQuery.ToListAsync();
+
+            if (!grupos.Any())
+                return Ok(new ApiResponse<object>(true, new List<object>()));
+
+            var grupoIds = grupos.Select(g => g.GrupoId).ToList();
+
+            // Empleados activos de esos grupos
+            var empleadosPorGrupo = await _db.Users
+                .Where(u => grupoIds.Contains(u.GrupoId ?? 0) &&
+                            u.Status == tiempo_libre.Models.Enums.UserStatus.Activo)
+                .Select(u => new { u.Id, u.GrupoId, u.Nomina })
+                .ToListAsync();
+
+            var empleadosIds = empleadosPorGrupo.Select(e => e.Id).ToList();
+            var nominasActivas = empleadosPorGrupo
+                .Where(e => e.Nomina.HasValue)
+                .Select(e => e.Nomina!.Value)
+                .Distinct().ToList();
+
+            // Vacaciones del mes
+            var vacaciones = await _db.VacacionesProgramadas
+                .Where(v => empleadosIds.Contains(v.EmpleadoId) &&
+                            v.FechaVacacion >= inicio && v.FechaVacacion <= fin &&
+                            v.EstadoVacacion == "Activa")
+                .Select(v => new { v.EmpleadoId, v.FechaVacacion })
+                .ToListAsync();
+
+            // Permisos e incapacidades del mes
+            var permisos = await _db.PermisosEIncapacidadesSAP
+                .Where(p => nominasActivas.Contains(p.Nomina) &&
+                            p.Desde <= fin && p.Hasta >= inicio &&
+                            (p.FechaSolicitud == null || p.EstadoSolicitud == "Aprobada"))
+                .Select(p => new { p.Nomina, p.Desde, p.Hasta })
+                .ToListAsync();
+
+            // Manning por área (con excepciones si las hay)
+            var excepcionesManning = await _db.ExcepcionesManning
+                .Where(e => grupos.Select(g => g.AreaId).Contains(e.AreaId) &&
+                            e.Anio == anio && e.Mes == mes && e.Activa)
+                .ToListAsync();
+
+            var nominaToId = empleadosPorGrupo
+                .Where(e => e.Nomina.HasValue)
+                .ToDictionary(e => e.Nomina!.Value, e => e.Id);
+
+            static int GetWeek(DateOnly d) => (d.Day - 1) / 7 + 1;
+
+            var resultado = Enumerable.Range(1, 5).Select(semana =>
+            {
+                var diasSemana = Enumerable.Range(1, DateTime.DaysInMonth(anio, mes))
+                    .Select(d => new DateOnly(anio, mes, d))
+                    .Where(d => GetWeek(d) == semana)
+                    .ToList();
+
+                if (!diasSemana.Any()) return null;
+
+                double totalHorasExtra = 0;
+                double totalHorasNormales = 0;
+
+                foreach (var grupo in grupos)
+                {
+                    var empGrupo = empleadosPorGrupo
+                        .Where(e => e.GrupoId == grupo.GrupoId).ToList();
+                    var totalEmp = empGrupo.Count;
+                    if (totalEmp == 0) continue;
+
+                    var empIds = empGrupo.Select(e => e.Id).ToHashSet();
+                    var nominasGrupo = empGrupo
+                        .Where(e => e.Nomina.HasValue)
+                        .Select(e => e.Nomina!.Value).ToHashSet();
+
+                    // Manning: excepción del mes o base del área
+                    var excManning = excepcionesManning
+                        .FirstOrDefault(e => e.AreaId == grupo.AreaId);
+                    var manning = excManning?.ManningRequeridoExcepcion
+                                  ?? grupo.Area?.Manning
+                                  ?? 0;
+                    if (manning <= 0) continue; // sin manning configurado, saltar
+
+                    foreach (var dia in diasSemana)
+                    {
+                        var ausentesVac = vacaciones
+                            .Count(v => empIds.Contains(v.EmpleadoId) && v.FechaVacacion == dia);
+                        var ausentesPerm = permisos
+                            .Count(p => nominasGrupo.Contains(p.Nomina) &&
+                                        p.Desde <= dia && p.Hasta >= dia);
+
+                        var totalAusentes = Math.Min(ausentesVac + ausentesPerm, totalEmp);
+                        var disponibles = totalEmp - totalAusentes;
+
+                        var deficit = (double)manning - disponibles;
+                        if (deficit > 0)
+                            totalHorasExtra += deficit * 8;
+
+                        totalHorasNormales += disponibles * 8;
+                    }
+                }
+
+                return new
+                {
+                    semana,
+                    horasExtra = Math.Round(totalHorasExtra, 1),
+                    horasNormales = Math.Round(totalHorasNormales, 1),
+                    pctExtra = totalHorasNormales > 0
+                        ? Math.Round(totalHorasExtra / totalHorasNormales * 100, 1)
+                        : 0.0
+                };
+            })
+            .Where(x => x != null)
+            .ToList();
+
+            return Ok(new ApiResponse<object>(true, resultado));
+        }
     }
 }
