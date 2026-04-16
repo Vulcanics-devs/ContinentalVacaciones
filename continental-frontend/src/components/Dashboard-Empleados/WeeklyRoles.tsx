@@ -337,36 +337,26 @@ const WeeklyRoles = () => {
     const getShiftForDay = (emp: { id: number; nomina: string }, day: Date) => {
         const dateStr = formatIso(day);
 
-        // Buscar con múltiples estrategias de matching
         const entry = weeklyData?.semana.find((s) => {
-            // Normalizar fecha (soportar camelCase y PascalCase)
             const fecha = (s as any)?.fecha ?? (s as any)?.Fecha;
             if (fecha !== dateStr) return false;
 
-            // Obtener objeto empleado con fallbacks
             const empleado = (s as any)?.empleado ?? (s as any)?.Empleado ?? {};
 
-            // Estrategia 1: Match por ID
-            const sameId = empleado.id === emp.id || empleado.Id === emp.id;
+            // Estrategia 1: Match por ID (más confiable)
+            if (empleado.id === emp.id || empleado.Id === emp.id) return true;
 
-            // Estrategia 2: Match por nómina (con múltiples variaciones)
-            const nominaMatch =
-                empleado.nomina ?? empleado.Nomina ?? empleado.username ?? empleado.Username;
-            const sameNomina =
-                !!emp.nomina && (nominaMatch === emp.nomina || nominaMatch === (emp as any).username);
+            // Estrategia 2: Match por nómina — normalizar a string para comparar
+            const nominaSource = String(empleado.nomina ?? empleado.Nomina ?? empleado.username ?? empleado.Username ?? '');
+            const nominaTarget = String(emp.nomina ?? '');
+            if (nominaSource && nominaTarget && nominaSource === nominaTarget) return true;
 
-            // Estrategia 3: Match por fullName como username (casos edge)
-            const fullName = empleado.fullName ?? empleado.FullName;
-            const sameUsername = (emp as any).username && fullName === (emp as any).username;
-
-            return sameId || sameNomina || sameUsername;
+            return false;
         });
 
-        // MEJORA: Normalizar el turno con fallbacks y conversión VA→V
         const rawTurno = (entry as any)?.codigoTurno ?? (entry as any)?.CodigoTurno;
         if (typeof rawTurno === "string" && rawTurno.trim() !== "") {
             const turno = rawTurno.trim().toUpperCase();
-            // Convertir "VA" a "V" por si el servicio no lo hizo
             return turno === "VA" ? "V" : turno;
         }
 
@@ -530,41 +520,35 @@ const WeeklyRoles = () => {
 
         return weekDays.map(day => {
             const dateStr = formatIso(day);
-            let inc = 0, apc = 0, vac = 0, permiso = 0, castigo = 0, fueraTiempo = 0;
+            let inc = 0, apc = 0, vac = 0, permiso = 0, castigo = 0, fueraTiempo = 0, descanso = 0;
 
             employees.forEach(emp => {
-                const shift = getShiftForDay(emp, day);
-                const s = shift?.toUpperCase();
-                if (s === 'E') inc++;
-                else if (s === 'A' || s === 'R' || s === 'M') apc++;
-                else if (s === 'V') vac++;
-                else if (s === 'P' || s === 'G' || s === 'H' || s === 'O') permiso++;
-                else if (s === 'S') castigo++;
-                else if (s === 'T') fueraTiempo++;
+                const shift = getShiftForDay(emp, day)?.toUpperCase() ?? '';
+                if (shift === 'E') inc++;
+                else if (['A', 'R', 'M'].includes(shift)) apc++;
+                else if (shift === 'V') vac++;
+                else if (['P', 'G', 'H', 'O'].includes(shift)) permiso++;
+                else if (shift === 'S') castigo++;
+                else if (shift === 'T') fueraTiempo++;
+                else if (shift === 'D' || shift === '') descanso++;
+                // 1, 2, 3, F — trabajando, no se cuentan como ausentes ni descanso
             });
 
             const totalNoDispo = inc + apc + vac + permiso + castigo + fueraTiempo;
-            const totalDispo = Math.max(0, totalEnRol - totalNoDispo);
-            const diferencia = totalDispo - manning; // negativo = déficit
+            const totalEnRol = employees.length;
+            const totalDispo = Math.max(0, totalEnRol - totalNoDispo - descanso);
+            const manning = areaManningBase > 0 ? areaManningBase : 0;
+            const diferencia = totalDispo - manning;
 
-            // Cálculo 6% (basado en manning vs disponibles)
             const horasDispo = totalDispo * 8;
-            // Horas extra = déficit * 8 (solo cuando hay déficit, es decir diferencia < 0)
             const horasExtra6 = diferencia < 0 ? Math.abs(diferencia) * 8 : 0;
             const pctExtra6 = horasDispo > 0 ? horasExtra6 / horasDispo : 0;
 
-            // Programación de vacaciones
             const vacProgramadas = totalNoDispo;
-            // Personal tiempo normal = los que SÍ trabajan (ni descanso ni ausentes)
-            const descanso = employees.filter(emp => {
-                const s = getShiftForDay(emp, day)?.toUpperCase();
-                return s === 'D' || s === '';
-            }).length;
             const personalTiempoNormal = Math.max(0, totalEnRol - totalNoDispo - descanso);
             const horasTiempoNormal = personalTiempoNormal * 8;
             const diferenciaVAP = personalTiempoNormal - manning;
             const horasExtraVAP = diferenciaVAP < 0 ? Math.abs(diferenciaVAP) * 8 : 0;
-            // Si no hay horas normales pero sí hay déficit, usar manning como base
             const baseCalculo = horasTiempoNormal > 0 ? horasTiempoNormal : (manning * 8);
             const pctExtraVAP = baseCalculo > 0 && horasExtraVAP > 0 ? horasExtraVAP / baseCalculo : 0;
 
@@ -847,6 +831,10 @@ const WeeklyRoles = () => {
                                     {weekDays.map((day, idx) => {
                                         const stat = weeklyStats.find(s => s.dateStr === formatIso(day));
                                         if (!stat) return <td key={idx} className="px-3 py-1.5 text-center">—</td>;
+                                        // Mostrar guión en días de descanso para totalDispo y diferencia
+                                        if ((key === 'totalDispo' || key === 'diferencia') && stat.esDiaDescanso) {
+                                            return <td key={idx} className={`px-3 py-1.5 text-center ${cls}`}>—</td>;
+                                        }
                                         const val = stat[key];
                                         const isNeg = key === "diferencia" && typeof val === "number" && val < 0;
                                         return (

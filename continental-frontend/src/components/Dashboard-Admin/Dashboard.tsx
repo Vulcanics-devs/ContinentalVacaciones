@@ -57,6 +57,33 @@ const TooltipBarras = ({ active, payload, label }: any) => {
     );
 };
 
+// Agrega este nuevo tooltip justo después de TooltipBarras:
+const TooltipBarrasSinPct = ({ active, payload, label }: any) => {
+    if (!active || !payload?.length) return null;
+    const totalAusentes = payload.reduce((sum: number, p: any) => sum + (p.value ?? 0), 0);
+    return (
+        <div style={{
+            background: 'white', border: '1px solid #e5e7eb', borderRadius: 8,
+            padding: '10px 14px', fontSize: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+        }}>
+            <p style={{ fontWeight: 600, marginBottom: 6, color: '#111827' }}>{label}</p>
+            {payload.map((p: any) => (
+                <div key={p.dataKey} style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginBottom: 2 }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#374151' }}>
+                        <span style={{ width: 10, height: 10, borderRadius: 2, background: p.fill, display: 'inline-block' }} />
+                        {p.name ?? p.dataKey}
+                    </span>
+                    <span style={{ fontWeight: 500, color: '#111827' }}>{p.value}</span>
+                </div>
+            ))}
+            <div style={{ borderTop: '1px solid #f3f4f6', marginTop: 6, paddingTop: 6, display: 'flex', justifyContent: 'space-between', fontWeight: 600, fontSize: 12 }}>
+                <span style={{ color: '#374151' }}>Total ausentes</span>
+                <span style={{ color: '#111827' }}>{totalAusentes}</span>
+            </div>
+        </div>
+    );
+};
+
 // ── Tooltip personalizado para pie con porcentaje ─────────────────────────
 const TooltipPie = ({ active, payload }: any) => {
     if (!active || !payload?.length) return null;
@@ -200,7 +227,7 @@ export const Dashboard: React.FC = () => {
     }, [anioSel, mesSel, fechaEfectiva, buildAreaParam]);
 
     // ── Cargar datos de tiempo extra ──────────────────────────────────────────
-    // Reemplaza el useEffect de tiempo extra completo por este:
+
     useEffect(() => {
         if (vistaMode !== 'tiempoExtra') return;
         const areaParam = buildAreaParam();
@@ -604,17 +631,30 @@ export const Dashboard: React.FC = () => {
                             ) : (
                                 <ResponsiveContainer width="100%" height={240}>
                                     <PieChart>
-                                        <Pie
-                                            data={motivosPie}
-                                            dataKey="value"
-                                            nameKey="name"
-                                            cx="50%" cy="50%"
-                                            outerRadius={85}
-                                            label={({ name, value, percent }) =>
-                                                `${name}: ${value} (${(percent * 100).toFixed(1)}%)`
-                                            }
-                                            labelLine
-                                        >
+                                                    <Pie
+                                                        data={motivosPie}
+                                                        dataKey="value"
+                                                        nameKey="name"
+                                                        cx="50%" cy="50%"
+                                                        outerRadius={70}
+                                                        label={({ name, percent, x, y, midAngle }) => {
+                                                            const RADIAN = Math.PI / 180;
+                                                            const radius = 85;
+                                                            const cx2 = 0.5 * (typeof window !== 'undefined' ? 1 : 1); // se calcula por recharts
+                                                            return (
+                                                                <text
+                                                                    x={x} y={y}
+                                                                    fill="#374151"
+                                                                    textAnchor={x > 200 ? 'start' : 'end'}
+                                                                    dominantBaseline="central"
+                                                                    fontSize={11}
+                                                                >
+                                                                    {`${name}: ${(percent * 100).toFixed(1)}%`}
+                                                                </text>
+                                                            );
+                                                        }}
+                                                        labelLine={true}
+                                                    >
                                             {motivosPie.map((entry, i) => (
                                                 <Cell key={i} fill={entry.fill} />
                                             ))}
@@ -651,19 +691,14 @@ export const Dashboard: React.FC = () => {
                                         <CartesianGrid strokeDasharray="3 3" />
                                         <XAxis dataKey="name" tick={{ fontSize: 12 }} />
                                         <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
-                                        <Tooltip content={<TooltipBarras />} />
+                                        <Tooltip content={<TooltipBarrasSinPct />} />
                                         <Legend />
                                         <Bar dataKey="Vacación" {...stackedBarProps} fill="#22c55e" />
                                         <Bar dataKey="Reprogramación" {...stackedBarProps} fill="#3b82f6" />
                                         <Bar dataKey="Festivo Trab." {...stackedBarProps} fill="#f59e0b" />
                                         <Bar dataKey="Permiso" {...stackedBarProps} fill="#a855f7" />
                                         <Bar dataKey="Incapacidad" {...stackedBarProps} fill="#ef4444">
-                                            <LabelList
-                                                dataKey="_total"
-                                                position="top"
-                                                style={{ fontSize: 11, fill: '#6b7280', fontWeight: 500 }}
-                                                formatter={(v: number) => v > 0 ? v : ''}
-                                            />
+
                                         </Bar>
                                     </BarChart>
                                 </ResponsiveContainer>
@@ -814,36 +849,44 @@ export const Dashboard: React.FC = () => {
                             <div className="flex items-center justify-center h-[280px] text-gray-400 text-sm">Sin datos</div>
                         ) : (
                             <ResponsiveContainer width="100%" height={300}>
-                                <BarChart
-                                    data={tiempoExtraAnualData.map((r: any) => ({
-                                        ...r,
-                                        name: MESES[r.mes - 1]
-                                    }))}
-                                    margin={{ top: 20, right: 16, left: 0, bottom: 0 }}
-                                >
-                                    <CartesianGrid strokeDasharray="3 3" />
-                                    <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                                    <YAxis allowDecimals={false} tick={{ fontSize: 12 }}
-                                        label={{ value: 'Horas', angle: -90, position: 'insideLeft', style: { fontSize: 11 } }} />
-                                    <Tooltip content={<TooltipTE />} />
-                                    <Legend />
-                                    <Bar dataKey="horasNormales" name="Horas normales" fill="#22c55e">
-                                        <LabelList
-                                            dataKey="horasNormales"
-                                            position="inside"
-                                            style={{ fontSize: 10, fill: '#fff', fontWeight: 500 }}
-                                            formatter={(v: number) => v > 0 ? v : ''}
-                                        />
-                                    </Bar>
-                                    <Bar dataKey="horasExtra" name="Horas extra" fill="#ef4444">
-                                        <LabelList
-                                            dataKey="horasExtra"
-                                            position="top"
-                                            style={{ fontSize: 11, fill: '#6b7280', fontWeight: 500 }}
-                                            formatter={(v: number) => v > 0 ? v : ''}
-                                        />
-                                    </Bar>
-                                </BarChart>
+                                        <BarChart
+                                            data={tiempoExtraAnualData.map((r: any) => ({
+                                                ...r,
+                                                name: MESES[r.mes - 1],
+                                                pctExtra: r.horasNormales > 0 ? Math.round(r.horasExtra / r.horasNormales * 1000) / 10 : 0
+                                            }))}
+                                            margin={{ top: 20, right: 16, left: 0, bottom: 0 }}
+                                        >
+                                            <CartesianGrid strokeDasharray="3 3" />
+                                            <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                                            <YAxis tick={{ fontSize: 12 }} />
+                                            <Tooltip content={<TooltipTE />} />
+                                            <Legend />
+                                            <Bar dataKey="horasNormales" name="Horas normales" fill="#22c55e">
+                                                <LabelList
+                                                    dataKey="horasNormales"
+                                                    position="inside"
+                                                    style={{ fontSize: 10, fill: '#fff', fontWeight: 500 }}
+                                                    formatter={(v: number) => v > 0 ? v : ''}
+                                                />
+                                            </Bar>
+                                            <Bar dataKey="horasExtra" name="Horas extra" fill="#ef4444">
+                                                <LabelList
+                                                    dataKey="horasExtra"
+                                                    position="top"
+                                                    style={{ fontSize: 11, fill: '#6b7280', fontWeight: 500 }}
+                                                    formatter={(v: number) => v > 0 ? v : ''}
+                                                />
+                                            </Bar>
+                                            <Bar dataKey="pctExtra" name="% Extra" fill="none" isAnimationActive={false} legendType="none">
+                                                <LabelList
+                                                    dataKey="pctExtra"
+                                                    position="top"
+                                                    style={{ fontSize: 10, fill: '#f59e0b', fontWeight: 600 }}
+                                                    formatter={(v: number) => v > 0 ? `${v}%` : ''}
+                                                />
+                                            </Bar>
+                                        </BarChart>
                             </ResponsiveContainer>
                         )}
                     </div>
@@ -949,7 +992,7 @@ export const Dashboard: React.FC = () => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {grupos.map(g => (
+                                        {gruposUnicos.map(g => (
                                             <React.Fragment key={g.grupoId}>
                                                 <tr
                                                     className={`border-t cursor-pointer hover:bg-gray-50 transition-colors
