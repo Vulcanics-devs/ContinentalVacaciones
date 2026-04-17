@@ -13,111 +13,142 @@ import { UserRole } from '@/interfaces/User.interface';
 
 const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 
+// ── Paleta unificada con WeeklyRoles chips ────────────────────────────────
+// Turno 1 (Mañana)   → emerald  bg-emerald-100 text-emerald-700  #10b981
+// Turno 2 (Tarde)    → yellow   bg-yellow-100  text-yellow-700   #eab308
+// Turno 3 (Noche)    → blue     bg-blue-100    text-blue-700     #3b82f6
+// V  Vacaciones      → purple   bg-purple-100  text-purple-700   #a855f7
+// P  Perm c/Goce     → green    bg-green-100   text-green-700    #22c55e
+// E  Inc. Enfermedad → red      bg-red-100     text-red-700      #ef4444
+// A  Inc. Accidente  → orange   bg-orange-100  text-orange-700   #f97316
+// M  Inc. Maternidad → pink     bg-pink-100    text-pink-700     #ec4899
+// G  Perm s/Goce     → amber    bg-amber-100   text-amber-700    #f59e0b
+// R  Inc. Riesgo     → rose     bg-rose-100    text-rose-700     #f43f5e
+// S  Suspensión      → slate    bg-slate-100   text-slate-700    #64748b
+// O  Perm Paternidad → cyan     bg-cyan-100    text-cyan-700     #06b6d4
+// H  Perm s/Goce Alt → indigo   bg-indigo-100  text-indigo-700   #6366f1
+// F  Festivo Trab.   → teal     bg-teal-100    text-teal-700     #14b8a6
+
+// Colores de las 5 barras apiladas del dashboard (mismo código visual que WeeklyRoles)
+const COLOR_VACACION        = '#a855f7'; // purple  — V
+const COLOR_REPROGRAMACION  = '#3b82f6'; // blue    — (reprogramación es vacación movida)
+const COLOR_FESTIVO         = '#14b8a6'; // teal    — F
+const COLOR_PERMISO         = '#22c55e'; // green   — P
+const COLOR_INCAPACIDAD     = '#ef4444'; // red     — E
+
+// Mapa para el pie de motivos
 const COLORES_MOTIVOS: Record<string, string> = {
-    Anual: '#22c55e',
-    Reprogramacion: '#3b82f6',
-    FestivoTrabajado: '#f59e0b',
-    Permiso: '#a855f7',
-    Incapacidad: '#ef4444',
-    Vacacion: '#22c55e',
+    // VacacionesProgramadas (TipoVacacion)
+    'Anual':              COLOR_VACACION,
+    'Vacaciones':         COLOR_VACACION,
+    'Reprogramacion':     COLOR_REPROGRAMACION,
+    'FestivoTrabajado':   COLOR_FESTIVO,
+
+    // PermisosEIncapacidadesSAP (ClaseAbsentismo)
+    'Permiso con Goce de Sueldo':           '#22c55e',  // green  — P
+    'Permiso sin Goce de Sueldo':           '#f59e0b',  // amber  — G
+    'Permiso sin Goce Alt':                 '#6366f1',  // indigo — H
+    'Permiso de Paternidad':                '#06b6d4',  // cyan   — O
+    'Incapacidad por Enfermedad':           '#ef4444',  // red    — E
+    'Inc. Enfermedad':                      '#ef4444',
+    'Inc. Accidente de Trabajo':            '#f97316',  // orange — A
+    'Incapacidad por Accidente de Trabajo': '#f97316',
+    'Inc. Maternidad':                      '#ec4899',  // pink   — M
+    'Incapacidad por Maternidad':           '#ec4899',
+    'Inc. Riesgo':                          '#f43f5e',  // rose   — R
+    'Suspension':                           '#64748b',  // slate  — S
+    'Suspensión':                           '#64748b',
+
+    // Fallbacks genéricos
+    'Permiso':     '#22c55e',
+    'Incapacidad': '#ef4444',
 };
 
-type AnualRow = { mes: number; totalEmpleados: number; vacacion: number; reprogramacion: number; festivoTrabajado: number; permiso: number; incapacidad: number };
-type SemanalRow = { semana: number; totalEmpleados: number; vacacion: number; reprogramacion: number; festivoTrabajado: number; permiso: number; incapacidad: number };
-type MotivoRow = { motivo: string; total: number };
-type TiempoExtraRow = { semana: number; horasExtra: number; horasNormales: number; pctExtra: number };
+type AnualRow    = { mes: number; totalEmpleados: number; turnosDisponibles: number; vacacion: number; reprogramacion: number; festivoTrabajado: number; permiso: number; incapacidad: number };
+type SemanalRow  = { semana: number; totalEmpleados: number; turnosDisponibles?: number; vacacion: number; reprogramacion: number; festivoTrabajado: number; permiso: number; incapacidad: number };
+type MotivoRow   = { motivo: string; total: number };
+type TiempoExtraRow = { semana: number; semanaAnual?: number; horasExtra: number; horasNormales: number; pctExtra: number };
 
-// ── Tooltip personalizado para barras apiladas con porcentaje ──────────────
+// ── Tooltip barras apiladas (ausencias) con denominador = turnosDisponibles ──
 const TooltipBarras = ({ active, payload, label }: any) => {
     if (!active || !payload?.length) return null;
-    const totalAusentes = payload.reduce((sum: number, p: any) => sum + (p.value ?? 0), 0);
-    const totalEmpleados = payload[0]?.payload?._totalEmpleados ?? totalAusentes;
+    const totalAusentes   = payload.reduce((sum: number, p: any) => sum + (p.value ?? 0), 0);
+    const turnos          = payload[0]?.payload?._turnosDisponibles ?? 0;
+    const totalEmpleados  = payload[0]?.payload?._totalEmpleados    ?? 0;
+    const denominador     = turnos > 0 ? turnos : totalEmpleados;
     return (
-        <div style={{
-            background: 'white', border: '1px solid #e5e7eb', borderRadius: 8,
-            padding: '10px 14px', fontSize: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-        }}>
-            <p style={{ fontWeight: 600, marginBottom: 6, color: '#111827' }}>{label}</p>
+        <div style={{ background:'white', border:'1px solid #e5e7eb', borderRadius:8, padding:'10px 14px', fontSize:12, boxShadow:'0 2px 8px rgba(0,0,0,0.1)' }}>
+            <p style={{ fontWeight:600, marginBottom:6, color:'#111827' }}>{label}</p>
             {payload.map((p: any) => (
-                <div key={p.dataKey} style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginBottom: 2 }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#374151' }}>
-                        <span style={{ width: 10, height: 10, borderRadius: 2, background: p.fill, display: 'inline-block' }} />
+                <div key={p.dataKey} style={{ display:'flex', justifyContent:'space-between', gap:16, marginBottom:2 }}>
+                    <span style={{ display:'flex', alignItems:'center', gap:5, color:'#374151' }}>
+                        <span style={{ width:10, height:10, borderRadius:2, background:p.fill, display:'inline-block' }} />
                         {p.name ?? p.dataKey}
                     </span>
-                    <span style={{ fontWeight: 500, color: '#111827' }}>
-                        {p.value} ({totalEmpleados > 0 ? ((p.value / totalEmpleados) * 100).toFixed(1) : 0}%)
+                    <span style={{ fontWeight:500, color:'#111827' }}>
+                        {p.value} ({denominador > 0 ? ((p.value / denominador) * 100).toFixed(1) : 0}%)
                     </span>
                 </div>
             ))}
-            <div style={{ borderTop: '1px solid #f3f4f6', marginTop: 6, paddingTop: 6, display: 'flex', justifyContent: 'space-between', fontWeight: 600, fontSize: 12 }}>
-                <span style={{ color: '#374151' }}>Total ausentes</span>
-                <span style={{ color: '#111827' }}>{totalAusentes} / {totalEmpleados}</span>
+            <div style={{ borderTop:'1px solid #f3f4f6', marginTop:6, paddingTop:6, display:'flex', justifyContent:'space-between', fontWeight:600, fontSize:12 }}>
+                <span style={{ color:'#374151' }}>Total ausencias / turnos disp.</span>
+                <span style={{ color:'#111827' }}>{totalAusentes} / {denominador}</span>
             </div>
         </div>
     );
 };
 
-// Agrega este nuevo tooltip justo después de TooltipBarras:
 const TooltipBarrasSinPct = ({ active, payload, label }: any) => {
     if (!active || !payload?.length) return null;
     const totalAusentes = payload.reduce((sum: number, p: any) => sum + (p.value ?? 0), 0);
     return (
-        <div style={{
-            background: 'white', border: '1px solid #e5e7eb', borderRadius: 8,
-            padding: '10px 14px', fontSize: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-        }}>
-            <p style={{ fontWeight: 600, marginBottom: 6, color: '#111827' }}>{label}</p>
+        <div style={{ background:'white', border:'1px solid #e5e7eb', borderRadius:8, padding:'10px 14px', fontSize:12, boxShadow:'0 2px 8px rgba(0,0,0,0.1)' }}>
+            <p style={{ fontWeight:600, marginBottom:6, color:'#111827' }}>{label}</p>
             {payload.map((p: any) => (
-                <div key={p.dataKey} style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginBottom: 2 }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#374151' }}>
-                        <span style={{ width: 10, height: 10, borderRadius: 2, background: p.fill, display: 'inline-block' }} />
+                <div key={p.dataKey} style={{ display:'flex', justifyContent:'space-between', gap:16, marginBottom:2 }}>
+                    <span style={{ display:'flex', alignItems:'center', gap:5, color:'#374151' }}>
+                        <span style={{ width:10, height:10, borderRadius:2, background:p.fill, display:'inline-block' }} />
                         {p.name ?? p.dataKey}
                     </span>
-                    <span style={{ fontWeight: 500, color: '#111827' }}>{p.value}</span>
+                    <span style={{ fontWeight:500, color:'#111827' }}>{p.value}</span>
                 </div>
             ))}
-            <div style={{ borderTop: '1px solid #f3f4f6', marginTop: 6, paddingTop: 6, display: 'flex', justifyContent: 'space-between', fontWeight: 600, fontSize: 12 }}>
-                <span style={{ color: '#374151' }}>Total ausentes</span>
-                <span style={{ color: '#111827' }}>{totalAusentes}</span>
+            <div style={{ borderTop:'1px solid #f3f4f6', marginTop:6, paddingTop:6, display:'flex', justifyContent:'space-between', fontWeight:600, fontSize:12 }}>
+                <span style={{ color:'#374151' }}>Total ausentes</span>
+                <span style={{ color:'#111827' }}>{totalAusentes}</span>
             </div>
         </div>
     );
 };
 
-// ── Tooltip personalizado para pie con porcentaje ─────────────────────────
+// ── Tooltip pie: solo en hover, sin labels inline ─────────────────────────
 const TooltipPie = ({ active, payload }: any) => {
     if (!active || !payload?.length) return null;
     const entry = payload[0];
     return (
-        <div style={{
-            background: 'white', border: '1px solid #e5e7eb', borderRadius: 8,
-            padding: '8px 12px', fontSize: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-        }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ width: 10, height: 10, borderRadius: 2, background: entry.payload.fill, display: 'inline-block' }} />
-                <span style={{ fontWeight: 500, color: '#111827' }}>{entry.name}:</span>
-                <span style={{ color: '#374151' }}>{entry.value} ({entry.payload.percent != null ? (entry.payload.percent * 100).toFixed(1) : 0}%)</span>
+        <div style={{ background:'white', border:'1px solid #e5e7eb', borderRadius:8, padding:'8px 12px', fontSize:12, boxShadow:'0 2px 8px rgba(0,0,0,0.1)' }}>
+            <span style={{ display:'flex', alignItems:'center', gap:6 }}>
+                <span style={{ width:10, height:10, borderRadius:2, background:entry.payload.fill, display:'inline-block' }} />
+                <span style={{ fontWeight:500, color:'#111827' }}>{entry.name}:</span>
+                <span style={{ color:'#374151' }}>{entry.value} ({entry.payload.percent != null ? (entry.payload.percent * 100).toFixed(1) : 0}%)</span>
             </span>
         </div>
     );
 };
 
-// ── Tooltip para tiempo extra ─────────────────────────────────────────────
+// ── Tooltip tiempo extra ──────────────────────────────────────────────────
 const TooltipTE = ({ active, payload, label }: any) => {
     if (!active || !payload?.length) return null;
     return (
-        <div style={{
-            background: 'white', border: '1px solid #e5e7eb', borderRadius: 8,
-            padding: '10px 14px', fontSize: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-        }}>
-            <p style={{ fontWeight: 600, marginBottom: 6, color: '#111827' }}>Semana {label}</p>
+        <div style={{ background:'white', border:'1px solid #e5e7eb', borderRadius:8, padding:'10px 14px', fontSize:12, boxShadow:'0 2px 8px rgba(0,0,0,0.1)' }}>
+            <p style={{ fontWeight:600, marginBottom:6, color:'#111827' }}>{label}</p>
             {payload.map((p: any) => (
-                <div key={p.dataKey} style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginBottom: 2 }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#374151' }}>
-                        <span style={{ width: 10, height: 10, borderRadius: 2, background: p.fill, display: 'inline-block' }} />
+                <div key={p.dataKey} style={{ display:'flex', justifyContent:'space-between', gap:16, marginBottom:2 }}>
+                    <span style={{ display:'flex', alignItems:'center', gap:5, color:'#374151' }}>
+                        <span style={{ width:10, height:10, borderRadius:2, background:p.fill, display:'inline-block' }} />
                         {p.name}
                     </span>
-                    <span style={{ fontWeight: 500, color: '#111827' }}>
+                    <span style={{ fontWeight:500, color:'#111827' }}>
                         {p.dataKey === 'pctExtra' ? `${p.value}%` : `${p.value} hrs`}
                     </span>
                 </div>
@@ -130,38 +161,33 @@ export const Dashboard: React.FC = () => {
     const { user, hasRole } = useAuth();
     const isAdmin = hasRole(UserRole.SUPER_ADMIN);
 
-    // ── Modo de vista ─────────────────────────────────────────────────────────
     const [vistaMode, setVistaMode] = useState<'ausencias' | 'tiempoExtra'>('ausencias');
 
-    // ── Filtros ──────────────────────────────────────────────────────────────
     const hoy = new Date();
-    const [anioSel, setAnioSel] = useState(hoy.getFullYear());
-    const [mesSel, setMesSel] = useState(hoy.getMonth() + 1);
-    const [semanaSel, setSemanaSel] = useState<number | 'all'>('all');
-    const [diaSel, setDiaSel] = useState<string>('');
+    const [anioSel,    setAnioSel]    = useState(hoy.getFullYear());
+    const [mesSel,     setMesSel]     = useState(hoy.getMonth() + 1);
+    const [semanaSel,  setSemanaSel]  = useState<number | 'all'>('all');
+    const [diaSel,     setDiaSel]     = useState<string>('');
 
     const [areaSelId, setAreaSelId] = useState<number | 'all'>(() =>
-        !hasRole(UserRole.SUPER_ADMIN) && user?.area?.areaId
-            ? user.area.areaId
-            : 'all'
+        !hasRole(UserRole.SUPER_ADMIN) && user?.area?.areaId ? user.area.areaId : 'all'
     );
 
-    // ── Datos maestros ───────────────────────────────────────────────────────
-    const [areas, setAreas] = useState<Area[]>([]);
-    const [grupos, setGrupos] = useState<AusenciasPorGrupo[]>([]);
-    const [anualData, setAnualData] = useState<AnualRow[]>([]);
-    const [semanalData, setSemanalData] = useState<SemanalRow[]>([]);
-    const [motivosData, setMotivosData] = useState<MotivoRow[]>([]);
-    const [tiempoExtraData, setTiempoExtraData] = useState<TiempoExtraRow[]>([]);
-    const [loadingTEAnual, setLoadingTEAnual] = useState(false);
-    const [loadingHoy, setLoadingHoy] = useState(true);
-    const [loadingHist, setLoadingHist] = useState(true);
-    const [loadingTE, setLoadingTE] = useState(false);
-    const [grupoExpandido, setGrupoExpandido] = useState<number | null>(null);
-
+    const [areas,              setAreas]              = useState<Area[]>([]);
+    const [grupos,             setGrupos]             = useState<AusenciasPorGrupo[]>([]);
+    const [anualData,          setAnualData]          = useState<AnualRow[]>([]);
+    const [semanalData,        setSemanalData]        = useState<SemanalRow[]>([]);
+    const [motivosData,        setMotivosData]        = useState<MotivoRow[]>([]);
+    const [tiempoExtraData,    setTiempoExtraData]    = useState<TiempoExtraRow[]>([]);
     const [tiempoExtraAnualData, setTiempoExtraAnualData] = useState<any[]>([]);
 
-    // ── Cargar áreas ─────────────────────────────────────────────────────────
+    const [loadingTEAnual, setLoadingTEAnual] = useState(false);
+    const [loadingHoy,     setLoadingHoy]     = useState(true);
+    const [loadingHist,    setLoadingHist]    = useState(true);
+    const [loadingTE,      setLoadingTE]      = useState(false);
+    const [grupoExpandido, setGrupoExpandido] = useState<number | null>(null);
+
+    // Cargar áreas
     useEffect(() => {
         areasService.getAreas()
             .then(resp => setAreas(Array.isArray(resp) ? resp : []))
@@ -174,7 +200,6 @@ export const Dashboard: React.FC = () => {
         }
     }, [isAdmin, user?.area?.areaId]);
 
-    // ── Fecha efectiva ────────────────────────────────────────────────────────
     const fechaEfectiva = useMemo(() => {
         if (diaSel) return diaSel;
         if (semanaSel !== 'all') {
@@ -189,9 +214,9 @@ export const Dashboard: React.FC = () => {
 
     const buildAreaParam = useCallback((prefix = '&') =>
         areaSelId !== 'all' ? `${prefix}areaId=${areaSelId}` : ''
-        , [areaSelId]);
+    , [areaSelId]);
 
-    // ── Cargar datos del día ──────────────────────────────────────────────────
+    // Datos del día
     useEffect(() => {
         setLoadingHoy(true);
         const fecha = new Date(fechaEfectiva + 'T00:00:00');
@@ -208,17 +233,17 @@ export const Dashboard: React.FC = () => {
             .finally(() => setLoadingHoy(false));
     }, [fechaEfectiva, areaSelId]);
 
-    // ── Cargar datos históricos ───────────────────────────────────────────────
+    // Datos históricos
     useEffect(() => {
         setLoadingHist(true);
         const areaParam = buildAreaParam();
         Promise.all([
             httpClient.get<any>(`/api/dashboard/ausencias-anuales?anio=${anioSel}${areaParam}`),
             httpClient.get<any>(`/api/dashboard/ausencias-semanales?anio=${anioSel}&mes=${mesSel}${areaParam}`),
-            httpClient.get<any>(`/api/dashboard/ausencias-motivos?fecha=${anioSel}-${String(mesSel).padStart(2, '0')}-01&fechaFin=${anioSel}-${String(mesSel).padStart(2, '0')}-${String(new Date(anioSel, mesSel, 0).getDate()).padStart(2, '0')}${areaParam}`),
+            httpClient.get<any>(`/api/dashboard/ausencias-motivos?fecha=${anioSel}-${String(mesSel).padStart(2,'0')}-01&fechaFin=${anioSel}-${String(mesSel).padStart(2,'0')}-${String(new Date(anioSel, mesSel, 0).getDate()).padStart(2,'0')}${areaParam}`),
         ])
             .then(([anual, semanal, motivos]) => {
-                setAnualData(anual?.data ?? anual ?? []);
+                setAnualData(anual?.data   ?? anual   ?? []);
                 setSemanalData(semanal?.data ?? semanal ?? []);
                 setMotivosData(motivos?.data ?? motivos ?? []);
             })
@@ -226,8 +251,7 @@ export const Dashboard: React.FC = () => {
             .finally(() => setLoadingHist(false));
     }, [anioSel, mesSel, fechaEfectiva, buildAreaParam]);
 
-    // ── Cargar datos de tiempo extra ──────────────────────────────────────────
-
+    // Datos tiempo extra
     useEffect(() => {
         if (vistaMode !== 'tiempoExtra') return;
         const areaParam = buildAreaParam();
@@ -245,29 +269,17 @@ export const Dashboard: React.FC = () => {
             .finally(() => setLoadingTEAnual(false));
     }, [vistaMode, anioSel, mesSel, buildAreaParam]);
 
-    const tiempoExtraForChart = useMemo(() => {
-        const seen = new Set<number>();
-        return tiempoExtraData
-            .map(r => ({
-                ...r,
-                semanaLabel: `Sem ${(r as any).semanaAnual ?? r.semana}` // Sem 14, 15...
-            }))
-            .filter(r => {
-                if (seen.has(r.semana)) return false;
-                seen.add(r.semana);
-                return true;
-            });
-    }, [tiempoExtraData]);
-
-    // ── Datos derivados para gráficas ────────────────────────────────────────
+    // ── Chart: barras apiladas anuales ────────────────────────────────────
+    // _turnosDisponibles = días_hábiles × 3 turnos × manning (viene del backend)
     const anualForChart = useMemo(() => anualData.map(r => ({
         name: MESES[r.mes - 1],
-        _totalEmpleados: r.totalEmpleados,
-        Vacación: r.vacacion,
-        Reprogramación: r.reprogramacion,
-        'Festivo Trab.': r.festivoTrabajado,
-        Permiso: r.permiso,
-        Incapacidad: r.incapacidad,
+        _totalEmpleados:    r.totalEmpleados,
+        _turnosDisponibles: r.turnosDisponibles ?? 0,
+        Vacación:           r.vacacion,
+        Reprogramación:     r.reprogramacion,
+        'Festivo Trab.':    r.festivoTrabajado,
+        Permiso:            r.permiso,
+        Incapacidad:        r.incapacidad,
         _total: r.vacacion + r.reprogramacion + r.festivoTrabajado + r.permiso + r.incapacidad,
     })), [anualData]);
 
@@ -276,99 +288,110 @@ export const Dashboard: React.FC = () => {
             ? semanalData.filter(r => r.semana === Number(semanaSel))
             : semanalData;
         return rows.map(r => {
-            const primerDia = (r.semana - 1) * 7 + 1;
-            const fecha = new Date(anioSel, mesSel - 1, Math.min(primerDia, 28));
+            const primerDia  = (r.semana - 1) * 7 + 1;
+            const fecha      = new Date(anioSel, mesSel - 1, Math.min(primerDia, 28));
             const startOfYear = new Date(fecha.getFullYear(), 0, 1);
-            const weekNum = Math.ceil(((fecha.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
-            return ({
+            const weekNum    = Math.ceil(((fecha.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
+            return {
                 name: `Sem ${weekNum}`,
-                _totalEmpleados: r.totalEmpleados,
-                Vacación: r.vacacion,
-                Reprogramación: r.reprogramacion,
-                'Festivo Trab.': r.festivoTrabajado,
-                Permiso: r.permiso,
-                Incapacidad: r.incapacidad,
+                _totalEmpleados:    r.totalEmpleados,
+                _turnosDisponibles: r.turnosDisponibles ?? 0,
+                Vacación:           r.vacacion,
+                Reprogramación:     r.reprogramacion,
+                'Festivo Trab.':    r.festivoTrabajado,
+                Permiso:            r.permiso,
+                Incapacidad:        r.incapacidad,
                 _total: r.vacacion + r.reprogramacion + r.festivoTrabajado + r.permiso + r.incapacidad,
-            });
+            };
         });
     }, [semanalData, semanaSel, anioSel, mesSel]);
 
+    // ── Pie de motivos: sin labels inline ────────────────────────────────
     const motivosPie = useMemo(() => {
         const total = motivosData.reduce((s, m) => s + m.total, 0);
         return motivosData.map(m => ({
-            name: m.motivo,
-            value: m.total,
+            name:    m.motivo,
+            value:   m.total,
             percent: total > 0 ? m.total / total : 0,
-            fill: COLORES_MOTIVOS[m.motivo] ?? '#6b7280',
+            fill:    COLORES_MOTIVOS[m.motivo] ?? '#6b7280',
         }));
     }, [motivosData]);
 
-    const gruposUnicos = useMemo(() => {
-        if (areaSelId !== 'all') {
-            // Con área seleccionada: deduplicar por grupoId
-            const map = new Map<number, AusenciasPorGrupo>();
-            grupos.forEach(g => {
-                if (!map.has(g.grupoId)) map.set(g.grupoId, g);
+    // ── Chart tiempo extra semanal — dedup de semanas ────────────────────
+    const tiempoExtraForChart = useMemo(() => {
+        const seen = new Set<number>();
+        return tiempoExtraData
+            .map(r => ({
+                ...r,
+                semanaLabel: `Sem ${(r as any).semanaAnual ?? r.semana}`,
+            }))
+            .filter(r => {
+                if (seen.has(r.semana)) return false;
+                seen.add(r.semana);
+                return true;
             });
-            return Array.from(map.values());
-        }
+    }, [tiempoExtraData]);
 
-        // Sin área (todas): agrupar por nombreGrupo y sumar
-        const map = new Map<string, AusenciasPorGrupo>();
-        grupos.forEach(g => {
-            const key = g.nombreGrupo;
-            if (!map.has(key)) {
-                map.set(key, {
-                    ...g,
-                    empleadosAusentes: [...(g.empleadosAusentes ?? [])],
-                    empleadosDisponibles: [...(g.empleadosDisponibles ?? [])],
-                });
-            } else {
-                const existing = map.get(key)!;
-                existing.personalTotal += g.personalTotal;
-                existing.personalDisponible += g.personalDisponible;
-                existing.personalNoDisponible += g.personalNoDisponible;
-                existing.porcentajeAusencia = existing.personalTotal > 0
-                    ? (existing.personalNoDisponible / existing.personalTotal) * 100
-                    : 0;
-                existing.excedeLimite = existing.excedeLimite || g.excedeLimite;
-                existing.empleadosAusentes = [
-                    ...(existing.empleadosAusentes ?? []),
-                    ...(g.empleadosAusentes ?? []),
-                ];
-                existing.empleadosDisponibles = [
-                    ...(existing.empleadosDisponibles ?? []),
-                    ...(g.empleadosDisponibles ?? []),
-                ];
-            }
-        });
-        return Array.from(map.values());
-    }, [grupos, areaSelId]);
+    // ── Chart tiempo extra anual: mostrar % en etiquetas ─────────────────
+    // pctExtra = horasExtra / horasNormales × 100 (ya viene del backend)
+    const tiempoExtraAnualForChart = useMemo(() =>
+        tiempoExtraAnualData.map((r: any) => ({
+            ...r,
+            name:     MESES[r.mes - 1],
+            pctExtra: r.horasNormales > 0
+                ? Math.round(r.horasExtra / r.horasNormales * 1000) / 10
+                : 0,
+        }))
+    , [tiempoExtraAnualData]);
 
-    // Total ausentes del mes seleccionado (desde anualData)
+    // ── Totales para pie personal ─────────────────────────────────────────
     const totalesMes = useMemo(() => {
         const mesRow = anualData.find(r => r.mes === mesSel);
         if (!mesRow) return { disponible: 0, ausente: 0, total: 0 };
         const ausente = mesRow.vacacion + mesRow.reprogramacion + mesRow.festivoTrabajado + mesRow.permiso + mesRow.incapacidad;
         return {
             ausente,
-            total: mesRow.totalEmpleados,
+            total:      mesRow.totalEmpleados,
             disponible: Math.max(0, mesRow.totalEmpleados - ausente),
         };
     }, [anualData, mesSel]);
 
-    // Para el pie del día (tabla de grupos sigue usando el snapshot diario)
-    const totales = useMemo(() => gruposUnicos.reduce(
+    const gruposUnicos = useMemo(() => {
+        if (areaSelId !== 'all') {
+            const map = new Map<number, AusenciasPorGrupo>();
+            grupos.forEach(g => { if (!map.has(g.grupoId)) map.set(g.grupoId, g); });
+            return Array.from(map.values());
+        }
+        const map = new Map<string, AusenciasPorGrupo>();
+        grupos.forEach(g => {
+            const key = g.nombreGrupo;
+            if (!map.has(key)) {
+                map.set(key, { ...g, empleadosAusentes: [...(g.empleadosAusentes ?? [])], empleadosDisponibles: [...(g.empleadosDisponibles ?? [])] });
+            } else {
+                const ex = map.get(key)!;
+                ex.personalTotal        += g.personalTotal;
+                ex.personalDisponible   += g.personalDisponible;
+                ex.personalNoDisponible += g.personalNoDisponible;
+                ex.porcentajeAusencia    = ex.personalTotal > 0 ? (ex.personalNoDisponible / ex.personalTotal) * 100 : 0;
+                ex.excedeLimite          = ex.excedeLimite || g.excedeLimite;
+                ex.empleadosAusentes     = [...(ex.empleadosAusentes ?? []), ...(g.empleadosAusentes ?? [])];
+                ex.empleadosDisponibles  = [...(ex.empleadosDisponibles ?? []), ...(g.empleadosDisponibles ?? [])];
+            }
+        });
+        return Array.from(map.values());
+    }, [grupos, areaSelId]);
+
+    const totales       = useMemo(() => gruposUnicos.reduce(
         (acc, g) => ({ disponible: acc.disponible + g.personalDisponible, ausente: acc.ausente + g.personalNoDisponible }),
         { disponible: 0, ausente: 0 }
     ), [gruposUnicos]);
 
-    const totalPersonal = totalesMes.total > 0 ? totalesMes.total : (totales.disponible + totales.ausente);
-    const ausentesPie = totalesMes.total > 0 ? totalesMes.ausente : totales.ausente;
+    const totalPersonal  = totalesMes.total > 0 ? totalesMes.total : (totales.disponible + totales.ausente);
+    const ausentesPie    = totalesMes.total > 0 ? totalesMes.ausente    : totales.ausente;
     const disponiblesPie = totalesMes.total > 0 ? totalesMes.disponible : totales.disponible;
 
     const piePersonal = [
-        { name: 'Disponible', value: disponiblesPie, percent: totalPersonal > 0 ? disponiblesPie / totalPersonal : 0, fill: '#22c55e' },
+        { name: 'Disponible', value: disponiblesPie, percent: totalPersonal > 0 ? disponiblesPie / totalPersonal : 0, fill: '#10b981' },
         { name: 'Ausente', value: ausentesPie, percent: totalPersonal > 0 ? ausentesPie / totalPersonal : 0, fill: '#ef4444' },
     ];
 
@@ -376,7 +399,7 @@ export const Dashboard: React.FC = () => {
         const total = new Date(anioSel, mesSel, 0).getDate();
         return Array.from({ length: total }, (_, i) => {
             const d = i + 1;
-            return `${anioSel}-${String(mesSel).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+            return `${anioSel}-${String(mesSel).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
         });
     }, [anioSel, mesSel]);
 
@@ -388,7 +411,7 @@ export const Dashboard: React.FC = () => {
 
     const stackedBarProps = { stackId: 'a' as const };
 
-    // ── Render ────────────────────────────────────────────────────────────────
+    // ── Render ─────────────────────────────────────────────────────────────
     return (
         <div className="p-6 space-y-6 bg-gray-50 min-h-screen">
 
@@ -397,7 +420,6 @@ export const Dashboard: React.FC = () => {
                 <h1 className="text-xl font-bold text-gray-900">Dashboard de Ausencias</h1>
 
                 <div className="flex flex-wrap items-end gap-4">
-
                     {/* Toggle Vista */}
                     <div className="flex flex-col gap-1">
                         <label className="text-xs font-medium text-gray-500">Vista</label>
@@ -405,15 +427,11 @@ export const Dashboard: React.FC = () => {
                             <button
                                 onClick={() => setVistaMode('ausencias')}
                                 className={`px-3 py-1.5 transition-colors ${vistaMode === 'ausencias' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
-                            >
-                                Ausencias
-                            </button>
+                            >Ausencias</button>
                             <button
                                 onClick={() => setVistaMode('tiempoExtra')}
                                 className={`px-3 py-1.5 transition-colors border-l border-gray-300 ${vistaMode === 'tiempoExtra' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
-                            >
-                                Tiempo Extra
-                            </button>
+                            >Tiempo Extra</button>
                         </div>
                     </div>
 
@@ -422,16 +440,11 @@ export const Dashboard: React.FC = () => {
                             <label className="text-xs font-medium text-gray-500">Área</label>
                             <select
                                 value={areaSelId}
-                                onChange={e => {
-                                    setAreaSelId(e.target.value === 'all' ? 'all' : Number(e.target.value));
-                                    setGrupoExpandido(null);
-                                }}
+                                onChange={e => { setAreaSelId(e.target.value === 'all' ? 'all' : Number(e.target.value)); setGrupoExpandido(null); }}
                                 className="border border-gray-300 rounded px-2 py-1.5 text-sm min-w-[160px]"
                             >
                                 <option value="all">Todas las áreas</option>
-                                {areas.map(a => (
-                                    <option key={a.areaId} value={a.areaId}>{a.nombreGeneral}</option>
-                                ))}
+                                {areas.map(a => <option key={a.areaId} value={a.areaId}>{a.nombreGeneral}</option>)}
                             </select>
                         </div>
                     )}
@@ -443,10 +456,7 @@ export const Dashboard: React.FC = () => {
                             onChange={e => { setAnioSel(Number(e.target.value)); setDiaSel(''); }}
                             className="border border-gray-300 rounded px-2 py-1.5 text-sm"
                         >
-                            {[0, 1, 2].map(i => {
-                                const y = hoy.getFullYear() - i;
-                                return <option key={y} value={y}>{y}</option>;
-                            })}
+                            {[0,1,2].map(i => { const y = hoy.getFullYear() - i; return <option key={y} value={y}>{y}</option>; })}
                         </select>
                     </div>
 
@@ -461,7 +471,6 @@ export const Dashboard: React.FC = () => {
                         </select>
                     </div>
 
-                    {/* Solo mostrar filtros de semana/día en modo ausencias */}
                     {vistaMode === 'ausencias' && (
                         <>
                             <div className="flex flex-col gap-1">
@@ -472,10 +481,9 @@ export const Dashboard: React.FC = () => {
                                     className="border border-gray-300 rounded px-2 py-1.5 text-sm"
                                 >
                                     <option value="all">Todas</option>
-                                    {[1, 2, 3, 4, 5].map(s => <option key={s} value={s}>Semana {s}</option>)}
+                                    {[1,2,3,4,5].map(s => <option key={s} value={s}>Semana {s}</option>)}
                                 </select>
                             </div>
-
                             <div className="flex flex-col gap-1">
                                 <label className="text-xs font-medium text-gray-500">Día específico</label>
                                 <select
@@ -486,7 +494,7 @@ export const Dashboard: React.FC = () => {
                                     <option value="">— Sin filtro —</option>
                                     {diasDelMes.map(d => (
                                         <option key={d} value={d}>
-                                            {new Date(d + 'T00:00:00').toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric' })}
+                                            {new Date(d + 'T00:00:00').toLocaleDateString('es-ES', { weekday:'short', day:'numeric' })}
                                         </option>
                                     ))}
                                 </select>
@@ -495,17 +503,9 @@ export const Dashboard: React.FC = () => {
                     )}
 
                     <button
-                        onClick={() => {
-                            setAnioSel(hoy.getFullYear());
-                            setMesSel(hoy.getMonth() + 1);
-                            setSemanaSel('all');
-                            setDiaSel('');
-                            if (isAdmin) setAreaSelId('all');
-                        }}
+                        onClick={() => { setAnioSel(hoy.getFullYear()); setMesSel(hoy.getMonth()+1); setSemanaSel('all'); setDiaSel(''); if (isAdmin) setAreaSelId('all'); }}
                         className="text-xs text-blue-600 hover:underline pb-1"
-                    >
-                        Limpiar filtros
-                    </button>
+                    >Limpiar filtros</button>
                 </div>
 
                 <p className="text-xs text-gray-400">
@@ -516,45 +516,40 @@ export const Dashboard: React.FC = () => {
                         </span></span>
                     )}
                     {vistaMode === 'tiempoExtra' && (
-                        <span className="ml-2 inline-flex items-center gap-1 text-amber-600 font-medium">
-                            · Vista: Tiempo Extra
-                        </span>
+                        <span className="ml-2 inline-flex items-center gap-1 text-amber-600 font-medium">· Vista: Tiempo Extra</span>
                     )}
                 </p>
             </div>
 
-            {/* ── VISTA AUSENCIAS ─────────────────────────────────────────────────── */}
+            {/* ── VISTA AUSENCIAS ────────────────────────────────────────────── */}
             {vistaMode === 'ausencias' && (
                 <>
-                    {/* GRÁFICA ANUAL */}
+                    {/* Gráfica anual */}
                     <div className="bg-white border border-gray-200 rounded-lg p-6">
-                        <h2 className="text-base font-semibold text-gray-700 mb-4">
+                        <h2 className="text-base font-semibold text-gray-700 mb-1">
                             Ausencias por mes — {anioSel}
-                            {areaSelId !== 'all' && (
-                                <span className="ml-2 text-sm font-normal text-gray-400">
-                                    · {areas.find(a => a.areaId === areaSelId)?.nombreGeneral}
-                                </span>
-                            )}
+                            {areaSelId !== 'all' && <span className="ml-2 text-sm font-normal text-gray-400">· {areas.find(a => a.areaId === areaSelId)?.nombreGeneral}</span>}
                         </h2>
+                        <p className="text-xs text-gray-400 mb-4">Turnos ausentes vs turnos disponibles (días hábiles × 3 turnos × manning)</p>
                         {loadingHist ? (
                             <div className="flex items-center justify-center h-[280px] text-gray-400 text-sm">Cargando...</div>
                         ) : (
                             <ResponsiveContainer width="100%" height={300}>
-                                <BarChart data={anualForChart} margin={{ top: 20, right: 16, left: 0, bottom: 0 }}>
+                                <BarChart data={anualForChart} margin={{ top:20, right:16, left:0, bottom:0 }}>
                                     <CartesianGrid strokeDasharray="3 3" />
-                                    <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                                    <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
+                                    <XAxis dataKey="name" tick={{ fontSize:12 }} />
+                                    <YAxis allowDecimals={false} tick={{ fontSize:12 }} />
                                     <Tooltip content={<TooltipBarras />} />
                                     <Legend />
-                                    <Bar dataKey="Vacación" {...stackedBarProps} fill="#22c55e" />
-                                    <Bar dataKey="Reprogramación" {...stackedBarProps} fill="#3b82f6" />
-                                    <Bar dataKey="Festivo Trab." {...stackedBarProps} fill="#f59e0b" />
-                                    <Bar dataKey="Permiso" {...stackedBarProps} fill="#a855f7" />
-                                    <Bar dataKey="Incapacidad" {...stackedBarProps} fill="#ef4444">
+                                    <Bar dataKey="Vacación"       {...stackedBarProps} fill={COLOR_VACACION} />
+                                    <Bar dataKey="Reprogramación" {...stackedBarProps} fill={COLOR_REPROGRAMACION} />
+                                    <Bar dataKey="Festivo Trab."  {...stackedBarProps} fill={COLOR_FESTIVO} />
+                                    <Bar dataKey="Permiso"        {...stackedBarProps} fill={COLOR_PERMISO} />
+                                    <Bar dataKey="Incapacidad"    {...stackedBarProps} fill={COLOR_INCAPACIDAD}>
                                         <LabelList
                                             dataKey="_total"
                                             position="top"
-                                            style={{ fontSize: 11, fill: '#6b7280', fontWeight: 500 }}
+                                            style={{ fontSize:11, fill:'#6b7280', fontWeight:500 }}
                                             formatter={(v: number) => v > 0 ? v : ''}
                                         />
                                     </Bar>
@@ -563,35 +558,27 @@ export const Dashboard: React.FC = () => {
                         )}
                     </div>
 
-                    {/* FILA: Pasteles */}
+                    {/* Pasteles */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
                         {/* Personal disponible vs ausente */}
                         <div className="bg-white border border-gray-200 rounded-lg p-6">
-                            <h2 className="text-base font-semibold text-gray-700 mb-1">
-                                Personal — {labelPeriodo}
-                            </h2>
+                            <h2 className="text-base font-semibold text-gray-700 mb-1">Personal — {labelPeriodo}</h2>
                             <p className="text-xs text-gray-400 mb-2">{totalPersonal} empleados en total</p>
-
                             {!loadingHoy && (
                                 <div className="flex gap-4 mb-4">
                                     <div className="flex-1 bg-green-50 rounded-lg p-3 text-center">
                                         <p className="text-xs text-green-600 font-medium">Disponibles</p>
                                         <p className="text-2xl font-bold text-green-700">{disponiblesPie}</p>
-                                        <p className="text-xs text-green-500">
-                                            {totalPersonal > 0 ? ((disponiblesPie / totalPersonal) * 100).toFixed(1) : 0}%
-                                        </p>
+                                        <p className="text-xs text-green-500">{totalPersonal > 0 ? ((disponiblesPie / totalPersonal)*100).toFixed(1) : 0}%</p>
                                     </div>
                                     <div className="flex-1 bg-red-50 rounded-lg p-3 text-center">
                                         <p className="text-xs text-red-600 font-medium">Ausentes</p>
                                         <p className="text-2xl font-bold text-red-700">{ausentesPie}</p>
-                                        <p className="text-xs text-red-500">
-                                            {totalPersonal > 0 ? ((ausentesPie / totalPersonal) * 100).toFixed(1) : 0}%
-                                        </p>
+                                        <p className="text-xs text-red-500">{totalPersonal > 0 ? ((ausentesPie / totalPersonal)*100).toFixed(1) : 0}%</p>
                                     </div>
                                 </div>
                             )}
-
                             {loadingHoy ? (
                                 <div className="flex items-center justify-center h-[200px] text-gray-400 text-sm">Cargando...</div>
                             ) : (
@@ -608,9 +595,7 @@ export const Dashboard: React.FC = () => {
                                             }
                                             labelLine={false}
                                         >
-                                            {piePersonal.map((entry, i) => (
-                                                <Cell key={i} fill={entry.fill} />
-                                            ))}
+                                            {piePersonal.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
                                         </Pie>
                                         <Tooltip content={<TooltipPie />} />
                                     </PieChart>
@@ -618,68 +603,61 @@ export const Dashboard: React.FC = () => {
                             )}
                         </div>
 
-                        {/* Motivos de ausencia */}
+                        {/* Motivos de ausencia — pie CON % en leyenda */}
                         <div className="bg-white border border-gray-200 rounded-lg p-6">
                             <h2 className="text-base font-semibold text-gray-700 mb-1">
                                 Motivos de ausencia — {labelPeriodo}
                             </h2>
-                            <p className="text-xs text-gray-400 mb-4">Distribución por tipo de ausencia</p>
+                            <p className="text-xs text-gray-400 mb-4">Distribución de ausencias por tipo</p>
                             {loadingHist ? (
-                                <div className="flex items-center justify-center h-[240px] text-gray-400 text-sm">Cargando...</div>
+                                <div className="flex items-center justify-center h-[280px] text-gray-400 text-sm">Cargando...</div>
                             ) : motivosPie.length === 0 ? (
-                                <div className="flex items-center justify-center h-[240px] text-gray-400 text-sm">Sin ausencias</div>
+                                <div className="flex items-center justify-center h-[280px] text-gray-400 text-sm">Sin ausencias</div>
                             ) : (
-                                <ResponsiveContainer width="100%" height={240}>
+                                <ResponsiveContainer width="100%" height={320}>
                                     <PieChart>
-                                                    <Pie
-                                                        data={motivosPie}
-                                                        dataKey="value"
-                                                        nameKey="name"
-                                                        cx="50%" cy="50%"
-                                                        outerRadius={70}
-                                                        label={({ name, percent, x, y, midAngle }) => {
-                                                            const RADIAN = Math.PI / 180;
-                                                            const radius = 85;
-                                                            const cx2 = 0.5 * (typeof window !== 'undefined' ? 1 : 1); // se calcula por recharts
-                                                            return (
-                                                                <text
-                                                                    x={x} y={y}
-                                                                    fill="#374151"
-                                                                    textAnchor={x > 200 ? 'start' : 'end'}
-                                                                    dominantBaseline="central"
-                                                                    fontSize={11}
-                                                                >
-                                                                    {`${name}: ${(percent * 100).toFixed(1)}%`}
-                                                                </text>
-                                                            );
-                                                        }}
-                                                        labelLine={true}
-                                                    >
-                                            {motivosPie.map((entry, i) => (
-                                                <Cell key={i} fill={entry.fill} />
-                                            ))}
+                                        <Pie
+                                            data={motivosPie}
+                                            dataKey="value"
+                                            nameKey="name"
+                                            cx="50%"
+                                            cy="42%"
+                                            innerRadius={55}
+                                            outerRadius={95}
+                                            label={false}
+                                            labelLine={false}
+                                        >
+                                            {motivosPie.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
                                         </Pie>
                                         <Tooltip content={<TooltipPie />} />
-                                        <Legend />
+                                        <Legend
+                                            layout="horizontal"
+                                            verticalAlign="bottom"
+                                            align="center"
+                                            formatter={(value, entry: any) => {
+                                                const pct = entry?.payload?.percent != null
+                                                    ? (entry.payload.percent * 100).toFixed(1)
+                                                    : '0.0';
+                                                return (
+                                                    <span style={{ fontSize: 11, color: '#374151' }}>
+                                                        {value} <span style={{ color: '#6b7280' }}>({pct}%)</span>
+                                                    </span>
+                                                );
+                                            }}
+                                        />
                                     </PieChart>
                                 </ResponsiveContainer>
                             )}
                         </div>
                     </div>
 
-                    {/* FILA: Semanal + Tabla */}
+                    {/* Semanal + Tabla */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-
-                        {/* Semanal */}
                         <div className="bg-white border border-gray-200 rounded-lg p-6">
                             <h2 className="text-base font-semibold text-gray-700 mb-4">
-                                Ausencias por semana — {MESES[mesSel - 1]} {anioSel}
+                                Ausencias por semana — {MESES[mesSel-1]} {anioSel}
                                 {semanaSel !== 'all' && <span className="text-gray-400 text-sm ml-1">(Sem {semanaSel})</span>}
-                                {areaSelId !== 'all' && (
-                                    <span className="ml-2 text-sm font-normal text-gray-400">
-                                        · {areas.find(a => a.areaId === areaSelId)?.nombreGeneral}
-                                    </span>
-                                )}
+                                {areaSelId !== 'all' && <span className="ml-2 text-sm font-normal text-gray-400">· {areas.find(a => a.areaId === areaSelId)?.nombreGeneral}</span>}
                             </h2>
                             {loadingHist ? (
                                 <div className="flex items-center justify-center h-[240px] text-gray-400 text-sm">Cargando...</div>
@@ -687,29 +665,25 @@ export const Dashboard: React.FC = () => {
                                 <div className="flex items-center justify-center h-[240px] text-gray-400 text-sm">Sin datos</div>
                             ) : (
                                 <ResponsiveContainer width="100%" height={260}>
-                                    <BarChart data={semanalForChart} margin={{ top: 20, right: 16, left: 0, bottom: 0 }}>
+                                    <BarChart data={semanalForChart} margin={{ top:20, right:16, left:0, bottom:0 }}>
                                         <CartesianGrid strokeDasharray="3 3" />
-                                        <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                                        <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
+                                        <XAxis dataKey="name" tick={{ fontSize:12 }} />
+                                        <YAxis allowDecimals={false} tick={{ fontSize:12 }} />
                                         <Tooltip content={<TooltipBarrasSinPct />} />
                                         <Legend />
-                                        <Bar dataKey="Vacación" {...stackedBarProps} fill="#22c55e" />
-                                        <Bar dataKey="Reprogramación" {...stackedBarProps} fill="#3b82f6" />
-                                        <Bar dataKey="Festivo Trab." {...stackedBarProps} fill="#f59e0b" />
-                                        <Bar dataKey="Permiso" {...stackedBarProps} fill="#a855f7" />
-                                        <Bar dataKey="Incapacidad" {...stackedBarProps} fill="#ef4444">
-
-                                        </Bar>
+                                        <Bar dataKey="Vacación"       {...stackedBarProps} fill={COLOR_VACACION} />
+                                        <Bar dataKey="Reprogramación" {...stackedBarProps} fill={COLOR_REPROGRAMACION} />
+                                        <Bar dataKey="Festivo Trab."  {...stackedBarProps} fill={COLOR_FESTIVO} />
+                                        <Bar dataKey="Permiso"        {...stackedBarProps} fill={COLOR_PERMISO} />
+                                        <Bar dataKey="Incapacidad"    {...stackedBarProps} fill={COLOR_INCAPACIDAD} />
                                     </BarChart>
                                 </ResponsiveContainer>
                             )}
                         </div>
 
-                        {/* Tabla resumen expandible */}
+                        {/* Tabla resumen por grupo */}
                         <div className="bg-white border border-gray-200 rounded-lg p-6">
-                            <h2 className="text-base font-semibold text-gray-700 mb-4">
-                                Detalle por grupo — {labelPeriodo}
-                            </h2>
+                            <h2 className="text-base font-semibold text-gray-700 mb-4">Detalle por grupo — {labelPeriodo}</h2>
                             {loadingHoy ? (
                                 <div className="flex items-center justify-center h-[240px] text-gray-400 text-sm">Cargando...</div>
                             ) : (
@@ -728,15 +702,11 @@ export const Dashboard: React.FC = () => {
                                             {gruposUnicos.map(g => (
                                                 <React.Fragment key={g.grupoId}>
                                                     <tr
-                                                        className={`border-t cursor-pointer hover:bg-gray-50 transition-colors
-                                                            ${g.excedeLimite ? 'bg-red-50' : ''}
-                                                            ${grupoExpandido === g.grupoId ? 'bg-blue-50' : ''}`}
+                                                        className={`border-t cursor-pointer hover:bg-gray-50 transition-colors ${g.excedeLimite ? 'bg-red-50' : ''} ${grupoExpandido === g.grupoId ? 'bg-blue-50' : ''}`}
                                                         onClick={() => setGrupoExpandido(p => p === g.grupoId ? null : g.grupoId)}
                                                     >
                                                         <td className="px-3 py-2 font-medium">
-                                                            <span className="text-gray-400 text-xs mr-1">
-                                                                {grupoExpandido === g.grupoId ? '▼' : '▶'}
-                                                            </span>
+                                                            <span className="text-gray-400 text-xs mr-1">{grupoExpandido === g.grupoId ? '▼' : '▶'}</span>
                                                             {g.nombreGrupo}
                                                         </td>
                                                         <td className="px-3 py-2 text-center">{g.personalTotal}</td>
@@ -747,7 +717,6 @@ export const Dashboard: React.FC = () => {
                                                             {g.excedeLimite && <span className="ml-1">⚠️</span>}
                                                         </td>
                                                     </tr>
-
                                                     {grupoExpandido === g.grupoId && (
                                                         <tr>
                                                             <td colSpan={5} className="px-4 py-3 bg-gray-50 border-b">
@@ -771,13 +740,14 @@ export const Dashboard: React.FC = () => {
                                                                                         <td className="py-1 pr-3 font-medium text-gray-800">{emp.nombreCompleto}</td>
                                                                                         <td className="py-1 pr-3 text-gray-500">{emp.nomina ?? '—'}</td>
                                                                                         <td className="py-1 pr-3">
-                                                                                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${emp.tipoAusencia === 'Vacacion' ? 'bg-green-100 text-green-700'
-                                                                                                    : emp.tipoAusencia === 'Reprogramacion' ? 'bg-blue-100 text-blue-700'
-                                                                                                        : emp.tipoAusencia === 'Incapacidad' ? 'bg-red-100 text-red-700'
-                                                                                                            : emp.tipoAusencia === 'Permiso' ? 'bg-purple-100 text-purple-700'
-                                                                                                                : emp.tipoAusencia === 'Festivo Trabajado' ? 'bg-yellow-100 text-yellow-700'
-                                                                                                                    : 'bg-gray-100 text-gray-700'
-                                                                                                }`}>
+                                                                                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                                                                                emp.tipoAusencia === 'Vacacion'      ? 'bg-purple-100 text-purple-700'
+                                                                                                : emp.tipoAusencia === 'Reprogramacion' ? 'bg-blue-100 text-blue-700'
+                                                                                                : emp.tipoAusencia === 'Incapacidad'    ? 'bg-red-100 text-red-700'
+                                                                                                : emp.tipoAusencia === 'Permiso'        ? 'bg-green-100 text-green-700'
+                                                                                                : emp.tipoAusencia === 'Festivo Trabajado' ? 'bg-teal-100 text-teal-700'
+                                                                                                : 'bg-gray-100 text-gray-700'
+                                                                                            }`}>
                                                                                                 {emp.tipoAusencia}
                                                                                             </span>
                                                                                         </td>
@@ -790,7 +760,6 @@ export const Dashboard: React.FC = () => {
                                                                 ) : (
                                                                     <p className="text-xs text-gray-400 mb-3">Sin empleados ausentes</p>
                                                                 )}
-
                                                                 {g.empleadosDisponibles && g.empleadosDisponibles.length > 0 && (
                                                                     <div className="pt-2 border-t border-gray-200">
                                                                         <p className="text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">
@@ -798,8 +767,7 @@ export const Dashboard: React.FC = () => {
                                                                         </p>
                                                                         <div className="flex flex-wrap gap-1">
                                                                             {g.empleadosDisponibles.map(emp => (
-                                                                                <span key={emp.empleadoId}
-                                                                                    className="text-xs bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded">
+                                                                                <span key={emp.empleadoId} className="text-xs bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded">
                                                                                     {emp.nombreCompleto}
                                                                                 </span>
                                                                             ))}
@@ -811,13 +779,8 @@ export const Dashboard: React.FC = () => {
                                                     )}
                                                 </React.Fragment>
                                             ))}
-
                                             {gruposUnicos.length === 0 && (
-                                                <tr>
-                                                    <td colSpan={5} className="px-3 py-8 text-center text-gray-400">
-                                                        Sin datos para el periodo seleccionado
-                                                    </td>
-                                                </tr>
+                                                <tr><td colSpan={5} className="px-3 py-8 text-center text-gray-400">Sin datos para el periodo seleccionado</td></tr>
                                             )}
                                         </tbody>
                                     </table>
@@ -828,97 +791,73 @@ export const Dashboard: React.FC = () => {
                 </>
             )}
 
-            {/* ── VISTA TIEMPO EXTRA ──────────────────────────────────────────────── */}
+            {/* ── VISTA TIEMPO EXTRA ──────────────────────────────────────────── */}
             {vistaMode === 'tiempoExtra' && (
                 <>
-
-                    {/* GRÁFICA: Horas normales vs horas extra por mes (anual) */}
+                    {/* Gráfica anual: horas normales vs extra, etiquetas = % */}
                     <div className="bg-white border border-gray-200 rounded-lg p-6">
                         <h2 className="text-base font-semibold text-gray-700 mb-1">
-                            Horas normales vs tiempo extra por mes — {anioSel}
+                            % Tiempo extra por mes — {anioSel}
                         </h2>
                         <p className="text-xs text-gray-400 mb-4">
-                            Resumen anual basado en déficit de manning
-                            {areaSelId !== 'all' && (
-                                <span> · {areas.find(a => a.areaId === areaSelId)?.nombreGeneral}</span>
-                            )}
+                            % de horas extra respecto a horas normales (sumatoria mensual por rol)
+                            {areaSelId !== 'all' && <span> · {areas.find(a => a.areaId === areaSelId)?.nombreGeneral}</span>}
                         </p>
                         {loadingTEAnual ? (
                             <div className="flex items-center justify-center h-[280px] text-gray-400 text-sm">Cargando...</div>
-                        ) : tiempoExtraAnualData.length === 0 ? (
+                        ) : tiempoExtraAnualForChart.length === 0 ? (
                             <div className="flex items-center justify-center h-[280px] text-gray-400 text-sm">Sin datos</div>
                         ) : (
-                            <ResponsiveContainer width="100%" height={300}>
-                                        <BarChart
-                                            data={tiempoExtraAnualData.map((r: any) => ({
-                                                ...r,
-                                                name: MESES[r.mes - 1],
-                                                pctExtra: r.horasNormales > 0 ? Math.round(r.horasExtra / r.horasNormales * 1000) / 10 : 0
-                                            }))}
-                                            margin={{ top: 20, right: 16, left: 0, bottom: 0 }}
-                                        >
+                                    <ResponsiveContainer width="100%" height={320}>
+                                        <BarChart data={tiempoExtraAnualForChart} margin={{ top: 36, right: 16, left: 0, bottom: 0 }}>
                                             <CartesianGrid strokeDasharray="3 3" />
                                             <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                                            <YAxis tick={{ fontSize: 12 }} />
+                                            <YAxis
+                                                tickFormatter={(v) => `${v}%`}
+                                                tick={{ fontSize: 12 }}
+                                                label={{ value: '% T. Extra', angle: -90, position: 'insideLeft', style: { fontSize: 11 } }}
+                                            />
                                             <Tooltip content={<TooltipTE />} />
                                             <Legend />
-                                            <Bar dataKey="horasNormales" name="Horas normales" fill="#22c55e">
-                                                <LabelList
-                                                    dataKey="horasNormales"
-                                                    position="inside"
-                                                    style={{ fontSize: 10, fill: '#fff', fontWeight: 500 }}
-                                                    formatter={(v: number) => v > 0 ? v : ''}
-                                                />
-                                            </Bar>
-                                            <Bar dataKey="horasExtra" name="Horas extra" fill="#ef4444">
-                                                <LabelList
-                                                    dataKey="horasExtra"
-                                                    position="top"
-                                                    style={{ fontSize: 11, fill: '#6b7280', fontWeight: 500 }}
-                                                    formatter={(v: number) => v > 0 ? v : ''}
-                                                />
-                                            </Bar>
-                                            <Bar dataKey="pctExtra" name="% Extra" fill="none" isAnimationActive={false} legendType="none">
+                                            <Bar dataKey="pctExtra" name="% Tiempo extra" fill="#f59e0b">
                                                 <LabelList
                                                     dataKey="pctExtra"
                                                     position="top"
-                                                    style={{ fontSize: 10, fill: '#f59e0b', fontWeight: 600 }}
+                                                    style={{ fontSize: 11, fill: '#92400e', fontWeight: 700 }}
                                                     formatter={(v: number) => v > 0 ? `${v}%` : ''}
                                                 />
                                             </Bar>
                                         </BarChart>
-                            </ResponsiveContainer>
+                                    </ResponsiveContainer>
                         )}
                     </div>
 
-                    {/* GRÁFICA: Horas normales vs horas extra por semana */}
+                    {/* Gráfica semanal: horas normales vs extra */}
                     <div className="bg-white border border-gray-200 rounded-lg p-6">
                         <h2 className="text-base font-semibold text-gray-700 mb-1">
-                            Horas normales vs tiempo extra por semana — {MESES[mesSel - 1]} {anioSel}
+                            Horas normales vs tiempo extra por semana — {MESES[mesSel-1]} {anioSel}
                         </h2>
                         <p className="text-xs text-gray-400 mb-4">
                             Basado en déficit de manning por día respecto al personal disponible
-                            {areaSelId !== 'all' && (
-                                <span> · {areas.find(a => a.areaId === areaSelId)?.nombreGeneral}</span>
-                            )}
+                            {areaSelId !== 'all' && <span> · {areas.find(a => a.areaId === areaSelId)?.nombreGeneral}</span>}
                         </p>
                         {loadingTE ? (
                             <div className="flex items-center justify-center h-[280px] text-gray-400 text-sm">Cargando...</div>
-                        ) : tiempoExtraData.length === 0 ? (
+                        ) : tiempoExtraForChart.length === 0 ? (
                             <div className="flex items-center justify-center h-[280px] text-gray-400 text-sm">Sin datos</div>
                         ) : (
                             <ResponsiveContainer width="100%" height={300}>
-                                <BarChart data={tiempoExtraForChart} margin={{ top: 20, right: 16, left: 0, bottom: 0 }}>
+                                <BarChart data={tiempoExtraForChart} margin={{ top:20, right:16, left:0, bottom:0 }}>
                                     <CartesianGrid strokeDasharray="3 3" />
-                                            <XAxis dataKey="semanaLabel" tick={{ fontSize: 12 }} />
-                                    <YAxis allowDecimals={false} tick={{ fontSize: 12 }} label={{ value: 'Horas', angle: -90, position: 'insideLeft', style: { fontSize: 11 } }} />
+                                    <XAxis dataKey="semanaLabel" tick={{ fontSize:12 }} />
+                                    <YAxis allowDecimals={false} tick={{ fontSize:12 }} label={{ value:'Horas', angle:-90, position:'insideLeft', style:{ fontSize:11 } }} />
                                     <Tooltip content={<TooltipTE />} />
                                     <Legend />
                                     <Bar dataKey="horasNormales" name="Horas normales" fill="#22c55e">
                                         <LabelList
                                             dataKey="horasNormales"
                                             position="inside"
-                                            style={{ fontSize: 10, fill: '#fff', fontWeight: 500 }}
+                                            style={{ fontSize:10, fill:'#fff', fontWeight:500 }}
                                             formatter={(v: number) => v > 0 ? v : ''}
                                         />
                                     </Bar>
@@ -926,7 +865,7 @@ export const Dashboard: React.FC = () => {
                                         <LabelList
                                             dataKey="horasExtra"
                                             position="top"
-                                            style={{ fontSize: 11, fill: '#6b7280', fontWeight: 500 }}
+                                            style={{ fontSize:11, fill:'#6b7280', fontWeight:500 }}
                                             formatter={(v: number) => v > 0 ? v : ''}
                                         />
                                     </Bar>
@@ -935,34 +874,32 @@ export const Dashboard: React.FC = () => {
                         )}
                     </div>
 
-                    {/* GRÁFICA: % de tiempo extra por semana */}
+                    {/* Gráfica: % tiempo extra por semana */}
                     <div className="bg-white border border-gray-200 rounded-lg p-6">
                         <h2 className="text-base font-semibold text-gray-700 mb-1">
-                            % Tiempo extra por semana — {MESES[mesSel - 1]} {anioSel}
+                            % Tiempo extra por semana — {MESES[mesSel-1]} {anioSel}
                         </h2>
                         <p className="text-xs text-gray-400 mb-4">
                             Porcentaje de horas extra respecto a horas normales disponibles
-                            {areaSelId !== 'all' && (
-                                <span> · {areas.find(a => a.areaId === areaSelId)?.nombreGeneral}</span>
-                            )}
+                            {areaSelId !== 'all' && <span> · {areas.find(a => a.areaId === areaSelId)?.nombreGeneral}</span>}
                         </p>
                         {loadingTE ? (
                             <div className="flex items-center justify-center h-[260px] text-gray-400 text-sm">Cargando...</div>
-                        ) : tiempoExtraData.length === 0 ? (
+                        ) : tiempoExtraForChart.length === 0 ? (
                             <div className="flex items-center justify-center h-[260px] text-gray-400 text-sm">Sin datos</div>
                         ) : (
                             <ResponsiveContainer width="100%" height={260}>
-                                <BarChart data={tiempoExtraForChart} margin={{ top: 20, right: 16, left: 0, bottom: 0 }}>
+                                <BarChart data={tiempoExtraForChart} margin={{ top:20, right:16, left:0, bottom:0 }}>
                                     <CartesianGrid strokeDasharray="3 3" />
-                                    <XAxis dataKey="semanaLabel" tick={{ fontSize: 12 }} />
-                                    <YAxis tickFormatter={(v) => `${v}%`} tick={{ fontSize: 12 }} />
+                                    <XAxis dataKey="semanaLabel" tick={{ fontSize:12 }} />
+                                    <YAxis tickFormatter={(v) => `${v}%`} tick={{ fontSize:12 }} />
                                     <Tooltip content={<TooltipTE />} />
                                     <Legend />
                                     <Bar dataKey="pctExtra" name="% Tiempo extra" fill="#f59e0b">
                                         <LabelList
                                             dataKey="pctExtra"
                                             position="top"
-                                            style={{ fontSize: 11, fill: '#6b7280', fontWeight: 500 }}
+                                            style={{ fontSize:11, fill:'#6b7280', fontWeight:500 }}
                                             formatter={(v: number) => v > 0 ? `${v}%` : ''}
                                         />
                                     </Bar>
@@ -971,11 +908,10 @@ export const Dashboard: React.FC = () => {
                         )}
                     </div>
 
-
-                    {/* TABLA: Detalle por grupo — Tiempo Extra */}
+                    {/* Tabla detalle por grupo */}
                     <div className="bg-white border border-gray-200 rounded-lg p-6">
                         <h2 className="text-base font-semibold text-gray-700 mb-4">
-                            Detalle por grupo — {MESES[mesSel - 1]} {anioSel}
+                            Detalle por grupo — {MESES[mesSel-1]} {anioSel}
                         </h2>
                         {loadingHoy ? (
                             <div className="flex items-center justify-center h-[240px] text-gray-400 text-sm">Cargando...</div>
@@ -995,15 +931,11 @@ export const Dashboard: React.FC = () => {
                                         {gruposUnicos.map(g => (
                                             <React.Fragment key={g.grupoId}>
                                                 <tr
-                                                    className={`border-t cursor-pointer hover:bg-gray-50 transition-colors
-                                    ${g.excedeLimite ? 'bg-red-50' : ''}
-                                    ${grupoExpandido === g.grupoId ? 'bg-blue-50' : ''}`}
+                                                    className={`border-t cursor-pointer hover:bg-gray-50 transition-colors ${g.excedeLimite ? 'bg-red-50' : ''} ${grupoExpandido === g.grupoId ? 'bg-blue-50' : ''}`}
                                                     onClick={() => setGrupoExpandido(p => p === g.grupoId ? null : g.grupoId)}
                                                 >
                                                     <td className="px-3 py-2 font-medium">
-                                                        <span className="text-gray-400 text-xs mr-1">
-                                                            {grupoExpandido === g.grupoId ? '▼' : '▶'}
-                                                        </span>
+                                                        <span className="text-gray-400 text-xs mr-1">{grupoExpandido === g.grupoId ? '▼' : '▶'}</span>
                                                         {g.nombreGrupo}
                                                     </td>
                                                     <td className="px-3 py-2 text-center">{g.personalTotal}</td>
@@ -1017,12 +949,9 @@ export const Dashboard: React.FC = () => {
                                                 {grupoExpandido === g.grupoId && (
                                                     <tr>
                                                         <td colSpan={5} className="px-4 py-3 bg-gray-50 border-b">
-                                                            {/* mismo contenido expandible que en vista ausencias */}
                                                             {g.empleadosAusentes?.length > 0 ? (
                                                                 <>
-                                                                    <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">
-                                                                        Empleados ausentes ({g.personalNoDisponible})
-                                                                    </p>
+                                                                    <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">Empleados ausentes ({g.personalNoDisponible})</p>
                                                                     <table className="w-full text-xs mb-3">
                                                                         <thead>
                                                                             <tr className="text-gray-400">
@@ -1038,14 +967,13 @@ export const Dashboard: React.FC = () => {
                                                                                     <td className="py-1 pr-3 font-medium text-gray-800">{emp.nombreCompleto}</td>
                                                                                     <td className="py-1 pr-3 text-gray-500">{emp.nomina ?? '—'}</td>
                                                                                     <td className="py-1 pr-3">
-                                                                                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${emp.tipoAusencia === 'Vacacion' ? 'bg-green-100 text-green-700'
-                                                                                                : emp.tipoAusencia === 'Reprogramacion' ? 'bg-blue-100 text-blue-700'
-                                                                                                    : emp.tipoAusencia === 'Incapacidad' ? 'bg-red-100 text-red-700'
-                                                                                                        : emp.tipoAusencia === 'Permiso' ? 'bg-purple-100 text-purple-700'
-                                                                                                            : 'bg-gray-100 text-gray-700'
-                                                                                            }`}>
-                                                                                            {emp.tipoAusencia}
-                                                                                        </span>
+                                                                                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                                                                            emp.tipoAusencia === 'Vacacion'         ? 'bg-purple-100 text-purple-700'
+                                                                                            : emp.tipoAusencia === 'Reprogramacion' ? 'bg-blue-100 text-blue-700'
+                                                                                            : emp.tipoAusencia === 'Incapacidad'    ? 'bg-red-100 text-red-700'
+                                                                                            : emp.tipoAusencia === 'Permiso'        ? 'bg-green-100 text-green-700'
+                                                                                            : 'bg-gray-100 text-gray-700'
+                                                                                        }`}>{emp.tipoAusencia}</span>
                                                                                     </td>
                                                                                     <td className="py-1 text-gray-400">{emp.tipoVacacion ?? '—'}</td>
                                                                                 </tr>
@@ -1062,11 +990,7 @@ export const Dashboard: React.FC = () => {
                                             </React.Fragment>
                                         ))}
                                         {grupos.length === 0 && (
-                                            <tr>
-                                                <td colSpan={5} className="px-3 py-8 text-center text-gray-400">
-                                                    Sin datos para el periodo seleccionado
-                                                </td>
-                                            </tr>
+                                            <tr><td colSpan={5} className="px-3 py-8 text-center text-gray-400">Sin datos para el periodo seleccionado</td></tr>
                                         )}
                                     </tbody>
                                 </table>

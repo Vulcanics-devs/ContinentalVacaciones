@@ -530,7 +530,7 @@ const WeeklyRoles = () => {
                 else if (['P', 'G', 'H', 'O'].includes(shift)) permiso++;
                 else if (shift === 'S') castigo++;
                 else if (shift === 'T') fueraTiempo++;
-                else if (shift === 'D' || shift === '') descanso++;
+                else if (shift === 'D') descanso++;
                 // 1, 2, 3, F — trabajando, no se cuentan como ausentes ni descanso
             });
 
@@ -551,7 +551,10 @@ const WeeklyRoles = () => {
             const horasExtraVAP = diferenciaVAP < 0 ? Math.abs(diferenciaVAP) * 8 : 0;
             const baseCalculo = horasTiempoNormal > 0 ? horasTiempoNormal : (manning * 8);
             const pctExtraVAP = baseCalculo > 0 && horasExtraVAP > 0 ? horasExtraVAP / baseCalculo : 0;
-
+            const tienesTurnoTrabajo = employees.some(emp => {
+                const s = getShiftForDay(emp, day)?.toUpperCase() ?? '';
+                return s === '1' || s === '2' || s === '3' || s === 'F';
+            });
             return {
                 dateStr,
                 inc, apc, vac, permiso, castigo, fueraTiempo,
@@ -559,7 +562,7 @@ const WeeklyRoles = () => {
                 horasDispo, horasExtra6, pctExtra6,
                 vacProgramadas, personalTiempoNormal,
                 horasTiempoNormal, horasExtraVAP, pctExtraVAP,
-                esDiaDescanso: descanso === employees.length,
+                esDiaDescanso: !tienesTurnoTrabajo,
             };
         });
     }, [weeklyData, employees, weekDays, groups, selectedGroup, areaManningBase]);

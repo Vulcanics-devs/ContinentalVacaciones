@@ -367,14 +367,29 @@ namespace tiempo_libre.Controllers
 
             var resultado = new List<ResumenSemanaDto>();
 
-            for (int semana = 1; semana <= 5; semana++)
-            {
-                var diasSemana = Enumerable.Range(1, DateTime.DaysInMonth(anio, mes))
-                    .Select(d => new DateOnly(anio, mes, d))
-                    .Where(d => GetWeek(d) == semana)
-                    .ToList();
+            // Calcular primer lunes que cae dentro o antes del inicio del mes
+            var primerLunes = inicio;
+            while (primerLunes.DayOfWeek != DayOfWeek.Monday)
+                primerLunes = primerLunes.AddDays(-1);
 
-                if (!diasSemana.Any()) continue;
+            var semanas = new List<(DateOnly desde, DateOnly hasta)>();
+            var cursor = primerLunes;
+            while (cursor <= fin)
+            {
+                var desde = cursor < inicio ? inicio : cursor;
+                var hasta = cursor.AddDays(6) > fin ? fin : cursor.AddDays(6);
+                if (desde <= fin)
+                    semanas.Add((desde, hasta));
+                cursor = cursor.AddDays(7);
+            }
+
+            int numSemana = 1;
+
+            foreach (var (desde, hasta) in semanas)
+            {
+                var diasSemana = Enumerable.Range(0, hasta.DayNumber - desde.DayNumber + 1)
+                    .Select(i => desde.AddDays(i))
+                    .ToList();
 
                 double totalHorasExtra = 0;
                 double totalHorasNormales = 0;
@@ -391,7 +406,6 @@ namespace tiempo_libre.Controllers
                         var rolGrupo = grupo.Rol ?? string.Empty;
                         var turnoDelDia = TurnosHelper.ObtenerTurnoParaFecha(rolGrupo, dia);
 
-                        // SOLO procesar si el grupo TIENE turno de trabajo
                         if (turnoDelDia == "1" || turnoDelDia == "2" || turnoDelDia == "3")
                         {
                             hayActividadArea = true;
@@ -409,32 +423,32 @@ namespace tiempo_libre.Controllers
                             var ausentesPerm = permisos.Count(p =>
                                 nominasGrupo.Contains(p.Nomina) && p.Desde <= dia && p.Hasta >= dia);
 
-                            disponiblesDia += (empGrupo.Count - Math.Min(ausentesVac + ausentesPerm, empGrupo.Count));
+                            disponiblesDia += empGrupo.Count - Math.Min(ausentesVac + ausentesPerm, empGrupo.Count);
                         }
                     }
 
                     if (!hayActividadArea) continue;
 
                     var primerGrupo = grupos.First();
-                    var excManning = excepcionesManning
-                        .FirstOrDefault(e => e.AreaId == primerGrupo.AreaId);
+                    var excManning = excepcionesManning.FirstOrDefault(e => e.AreaId == primerGrupo.AreaId);
+                    var manning = (double)(excManning?.ManningRequeridoExcepcion ?? primerGrupo.Area?.Manning ?? 0);
 
-                    var manning = (double)(excManning?.ManningRequeridoExcepcion ??
-                                           primerGrupo.Area?.Manning ?? 0);
+                        if (manning > 0)
+                        {
+                            totalHorasNormales += Math.Min(disponiblesDia, manning) * 8;
 
-                    if (manning > 0)
-                    {
-                        totalHorasNormales += Math.Min(disponiblesDia, manning) * 8;
+                            var deficit = manning - disponiblesDia;
+                            if (deficit > 0)
+                                totalHorasExtra += deficit * 8;
+                        }
 
-                        var deficit = manning - disponiblesDia;
-                        if (deficit > 0) totalHorasExtra += deficit * 8;
-                    }
                 }
 
-                resultado.Add(new ResumenSemanaDto(semana, totalHorasExtra, totalHorasNormales));
+                resultado.Add(new ResumenSemanaDto(numSemana++, totalHorasExtra, totalHorasNormales));
             }
 
             return resultado;
+
         }
 
         [HttpGet("resumen-tiempo-extra-semanal-v2")]
@@ -558,7 +572,7 @@ namespace tiempo_libre.Controllers
                         var disponibles = totalEmp - totalAusentes;
 
                         // Horas normales = disponibles × 8
-                        totalHorasNormales += (double)disponibles * 8;
+                        totalHorasNormales += Math.Min((double)disponibles, manning) * 8;
 
                         // Horas extra = déficit × 8 (solo si hay déficit)
                         var deficit = manning - (double)disponibles;
@@ -584,130 +598,5 @@ namespace tiempo_libre.Controllers
             return Ok(new ApiResponse<object>(true, resultado));
         }
 
-        // ─────────────────────────────────────────────────────────────────────────────
-        // TAMBIÉN corregir resumen-tiempo-extra-anual para consistencia,
-        // ya que llama a CalcularResumenTiempoExtraMes que tiene el mismo bug.
-        // Aplica la misma lógica en CalcularResumenTiempoExtraMes:
-        // ─────────────────────────────────────────────────────────────────────────────
-
-        //private async Task<List<ResumenSemanaDto>> CalcularResumenTiempoExtraMes(
-        //    int anio, int mes, int? areaId)
-        //{
-        //    var inicio = new DateOnly(anio, mes, 1);
-        //    var fin = new DateOnly(anio, mes, DateTime.DaysInMonth(anio, mes));
-
-        //    var gruposQuery = _db.Grupos.Include(g => g.Area).AsQueryable();
-        //    if (areaId.HasValue)
-        //        gruposQuery = gruposQuery.Where(g => g.AreaId == areaId.Value);
-        //    var grupos = await gruposQuery.ToListAsync();
-
-        //    if (!grupos.Any()) return new List<ResumenSemanaDto>();
-
-        //    var grupoIds = grupos.Select(g => g.GrupoId).ToList();
-
-        //    var empleadosPorGrupo = await _db.Users
-        //        .Where(u => grupoIds.Contains(u.GrupoId ?? 0) &&
-        //                    u.Status == tiempo_libre.Models.Enums.UserStatus.Activo)
-        //        .Select(u => new { u.Id, u.GrupoId, u.Nomina })
-        //        .ToListAsync();
-
-        //    var empleadosIds = empleadosPorGrupo.Select(e => e.Id).ToList();
-        //    var nominasActivas = empleadosPorGrupo
-        //        .Where(e => e.Nomina.HasValue)
-        //        .Select(e => e.Nomina!.Value)
-        //        .Distinct().ToList();
-
-        //    var diasInhabiles = await _db.DiasInhabiles
-        //        .Where(d => d.Fecha >= inicio && d.Fecha <= fin)
-        //        .Select(d => d.Fecha)
-        //        .ToHashSetAsync();
-
-        //    var vacaciones = await _db.VacacionesProgramadas
-        //        .Where(v => empleadosIds.Contains(v.EmpleadoId) &&
-        //                    v.FechaVacacion >= inicio && v.FechaVacacion <= fin &&
-        //                    v.EstadoVacacion == "Activa")
-        //        .Select(v => new { v.EmpleadoId, v.FechaVacacion })
-        //        .ToListAsync();
-
-        //    var permisos = await _db.PermisosEIncapacidadesSAP
-        //        .Where(p => nominasActivas.Contains(p.Nomina) &&
-        //                    p.Desde <= fin && p.Hasta >= inicio &&
-        //                    (p.FechaSolicitud == null || p.EstadoSolicitud == "Aprobada"))
-        //        .Select(p => new { p.Nomina, p.Desde, p.Hasta })
-        //        .ToListAsync();
-
-        //    var excepcionesManning = await _db.ExcepcionesManning
-        //        .Where(e => grupos.Select(g => g.AreaId).Contains(e.AreaId) &&
-        //                    e.Anio == anio && e.Mes == mes && e.Activa)
-        //        .ToListAsync();
-
-        //    static int GetWeek(DateOnly d) => (d.Day - 1) / 7 + 1;
-
-        //    var resultado = new List<ResumenSemanaDto>();
-
-        //    for (int semana = 1; semana <= 5; semana++)
-        //    {
-        //        var diasSemana = Enumerable.Range(1, DateTime.DaysInMonth(anio, mes))
-        //            .Select(d => new DateOnly(anio, mes, d))
-        //            .Where(d => GetWeek(d) == semana)
-        //            .ToList();
-
-        //        if (!diasSemana.Any()) continue;
-
-        //        double totalHorasExtra = 0;
-        //        double totalHorasNormales = 0;
-
-        //        foreach (var grupo in grupos)
-        //        {
-        //            var empGrupo = empleadosPorGrupo
-        //                .Where(e => e.GrupoId == grupo.GrupoId).ToList();
-        //            var totalEmp = empGrupo.Count;
-        //            if (totalEmp == 0) continue;
-
-        //            var empIds = empGrupo.Select(e => e.Id).ToHashSet();
-        //            var nominasGrupo = empGrupo
-        //                .Where(e => e.Nomina.HasValue)
-        //                .Select(e => e.Nomina!.Value).ToHashSet();
-
-        //            var excManning = excepcionesManning
-        //                .FirstOrDefault(e => e.AreaId == grupo.AreaId);
-        //            var manning = excManning?.ManningRequeridoExcepcion
-        //                          ?? grupo.Area?.Manning ?? 0;
-        //            if (manning <= 0) continue;
-
-        //            var rolGrupo = grupo.Rol ?? string.Empty;
-
-        //            foreach (var dia in diasSemana)
-        //            {
-        //                if (diasInhabiles.Contains(dia)) continue;
-
-        //                // ─── CORRECCIÓN: Excluir días de descanso del patrón del grupo ──
-        //                var turnoDelDia = TurnosHelper.ObtenerTurnoParaFecha(rolGrupo, dia);
-        //                bool esDiaDeDescanso = turnoDelDia != "1" && turnoDelDia != "2" && turnoDelDia != "3";
-        //                if (esDiaDeDescanso) continue;
-        //                // ────────────────────────────────────────────────────────────────
-
-        //                var ausentesVac = vacaciones
-        //                    .Count(v => empIds.Contains(v.EmpleadoId) && v.FechaVacacion == dia);
-        //                var ausentesPerm = permisos
-        //                    .Count(p => nominasGrupo.Contains(p.Nomina) &&
-        //                                p.Desde <= dia && p.Hasta >= dia);
-
-        //                var totalAusentes = Math.Min(ausentesVac + ausentesPerm, totalEmp);
-        //                var disponibles = totalEmp - totalAusentes;
-
-        //                totalHorasNormales += disponibles * 8;
-
-        //                var deficit = (double)manning - disponibles;
-        //                if (deficit > 0)
-        //                    totalHorasExtra += deficit * 8;
-        //            }
-        //        }
-
-        //        resultado.Add(new ResumenSemanaDto(semana, totalHorasExtra, totalHorasNormales));
-        //    }
-
-        //    return resultado;
-        //}
     }
 }

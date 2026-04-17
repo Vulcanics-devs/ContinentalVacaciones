@@ -855,23 +855,14 @@ export const RequestModal = ({
                                     >
                                         <option value="">Selecciona un festivo trabajado</option>
                                         {festivosDisponibles.map((festivo) => {
-                                            const fechaPartes = festivo.festivoTrabajado.split('-');
-                                            const fecha = new Date(
-                                                parseInt(fechaPartes[0]),
-                                                parseInt(fechaPartes[1]) - 1,
-                                                parseInt(fechaPartes[2])
-                                            );
-
                                             return (
                                                 <option key={festivo.id} value={festivo.id}>
-                                                    {fecha.toLocaleDateString('es-MX', {
+                                                    {new Date(festivo.festivoTrabajado + 'T00:00:00').toLocaleDateString('es-MX', {
                                                         day: 'numeric',
                                                         month: 'long',
                                                         year: 'numeric',
-                                                        timeZone: 'UTC'
                                                     })}
-                                                    {' - '}
-                                                    {festivo.nombreEmpleado}
+
                                                     {' ('}
                                                     {festivo.diaSemana}
                                                     {')'}
